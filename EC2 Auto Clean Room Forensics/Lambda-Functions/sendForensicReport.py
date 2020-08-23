@@ -31,41 +31,47 @@ logger.setLevel(logging.INFO)
 def lambda_handler(event, context):
     print(event)
     accountID = context.invoked_function_arn.split(":")[4]
-    bucket = event['Records'][0]['s3']['bucket']['name']
-    key = event['Records'][0]['s3']['object']['key'] 
+    # bucket = event['Records'][0]['s3']['bucket']['name']
+    # key = event['Records'][0]['s3']['object']['key']
+    bucket = os.environ['OUTPUT_S3_BUCKETNAME']
+    key = "/incident-response/" + event['instanceID'] + '/' + event['instanceID'] + '.txt'
+    print("Sending report {}{}".format(bucket, key))
 
-    response = client.get_object(
-        Bucket=bucket,
-        Key=key
-    )
-    # print (response)
-    content = response['Body'].read()
-    # print(content)
-    array = []
-    linearray = content.splitlines()
-    # print (linearray)
-    for s in linearray:
-        # print (s)
-        
-        if "d/r *" in str(s):
+    try:
+        response = client.get_object(
+            Bucket=bucket,
+            Key=key
+        )
+        # print (response)
+        content = response['Body'].read()
+        # print(content)
+        array = []
+        linearray = content.splitlines()
+        # print (linearray)
+        for s in linearray:
             # print (s)
-            array.append('"' + str(s) + '"')
-    
-    print(array)
-    # json_message = json.loads(json.loads(event['Records'][0]['Sns']['Message'])['TextMessage'])
-    instanceList = key.replace('incident-response/file-deleted-', '').replace(".txt", "")
-    print(instanceList)
-    instanceArray = instanceList.split("-i-")
-    slack_message_text = formatMyMessage(
-        "i-" + instanceArray[1], instanceArray[0], array, "s3://" + bucket + "/" + key, accountID
+
+            if "d/r *" in str(s):
+                # print (s)
+                array.append('"' + str(s) + '"')
+
+        print(array)
+        # json_message = json.loads(json.loads(event['Records'][0]['Sns']['Message'])['TextMessage'])
+        instanceList = key.replace('incident-response/file-deleted-', '').replace(".txt", "")
+        print(instanceList)
+        instanceArray = instanceList.split("-i-")
+        slack_message_text = formatMyMessage(
+            "i-" + instanceArray[1], instanceArray[0], array, "s3://" + bucket + "/" + key, accountID
         )
-    # Sends the message to Slack
-    response = requests.post(
-        HOOK_URL, data=json.dumps(slack_message_text), headers={'Content-Type': 'application/json'}
+        # Sends the message to Slack
+        response = requests.post(
+            HOOK_URL, data=json.dumps(slack_message_text), headers={'Content-Type': 'application/json'}
         )
-    logging.info("Response Status Code: ")
-    # logging.info(response.status_code)
-    return slack_message_text
+        logging.info("Response Status Code: ")
+        # logging.info(response.status_code)
+    except:
+        logger.error("Failed to send report {}{}".format(bucket, key))
+    return event
 
 
 def formatMyMessage(victimInstanceID, instanceID, deletedLines, s3location, accountID):
@@ -80,8 +86,8 @@ def formatMyMessage(victimInstanceID, instanceID, deletedLines, s3location, acco
                 "title": title,
                 "text": "",
                 "fields": [{
-                        "value": "Details: " + '\n '.join(deletedLines)
-                    },
+                    "value": "Details: " + '\n '.join(deletedLines)
+                },
                     {
                         "value": "For More details Login to the instance: " + instanceID
                     }]

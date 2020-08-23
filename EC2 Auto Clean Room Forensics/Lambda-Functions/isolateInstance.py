@@ -19,6 +19,7 @@ elbv2client = boto3.client('elbv2')
 
 # Isolate Instance from EC@ autoscaling
 autoscalingclient = boto3.client('autoscaling')
+ec2client = boto3.client('ec2')
 ec2 = boto3.resource('ec2')
 
 
@@ -51,8 +52,36 @@ def isolateInstanceASG(instanceID, AutoScalingGroupName):
         InstanceIds=[instanceID], AutoScalingGroupName=AutoScalingGroupName,
         ShouldDecrementDesiredCapacity=ShouldDecrementDesiredCapacity
     )
+    tag_instance(instanceID)
     print(response)
     return 'SUCCEEDED'
+
+
+# Check if instance exists
+def get_instance_by_id(instanceID):
+    Instances = ec2client.describe_instances(
+        InstanceIds=[instanceID]
+        )
+    #TaggedInstances = ec2client.describe_instances(
+    #    Filters=['Name': 'tag:IsInstanceUnderForensics','Values':['Yes']],InstanceIds=[instanceID]
+    #    )
+    if len(Instances)>0:
+        TaggedInstances = ec2.instances.filter(
+            Filters=[{'Name': 'tag:IsInstanceUnderForensics', 'Values': ['Yes']}], InstanceIds=[instanceID]
+        )
+        for instance in TaggedInstances:
+            if instance.id == instanceID:
+                return 'DONE'
+        tag_instance(instanceID)
+    return 'SUCCEEDED'
+
+
+# Tag instance
+def tag_instance(instanceID):
+    ec2client.create_tags(
+        Resources=[instanceID],Tags=[{'Key': 'IsInstanceUnderForensics','Value': 'Yes'}]
+        )
+    return
 
 
 # Isolate Instance from ALB
@@ -67,6 +96,7 @@ def isolateInstanceALBv2(instanceID, targetGroupsARN):
             },
         ]
     )
+    tag_instance(instanceID)
     print(response)
     return 'SUCCEEDED'
 
@@ -77,9 +107,18 @@ def isolateInstanceALBv2(instanceID, targetGroupsARN):
 def lambda_handler(event, context):
     print(event)
     instanceID = event.get('instanceID')
+    # tag_instance(instanceID)
     response = 'FAILED'
     targetGroups = elbv2client.describe_target_groups()
-    AutoScalingGroupName = get_asginstances_byid(instanceID)
+    try:
+        AutoScalingGroupName = get_asginstances_byid(instanceID)
+    except IndexError:
+        print("Instance is not part of any autoscaling group")
+        response = get_instance_by_id(instanceID)
+        if response == 'DONE':
+            return 'DONE'
+        if response == 'SUCCEEDED':
+            return response
     if targetGroups:
         # Iterates ELB and gets the ELB where the instance is attached
         for key in targetGroups['TargetGroups']:
@@ -94,7 +133,7 @@ def lambda_handler(event, context):
 
             if instanceID in instanceIDlist:
                 response = isolateInstanceALBv2(instanceID, targetGroupArn)
-    if AutoScalingGroupName:
+    if 'AutoScalingGroupName' in locals():
         response = isolateInstanceASG(instanceID, AutoScalingGroupName)
     event['STATUS'] = response
     event['targetGroupArn'] = targetGroupArn

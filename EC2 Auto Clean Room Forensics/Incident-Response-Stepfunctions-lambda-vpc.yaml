@@ -150,6 +150,10 @@ Resources:
           - '"Variable": "$.STATUS",'
           - '"StringEquals": "SUCCEEDED",'
           - '"Next": "Alert Security Team on Isolation and Incident"'
+          - "}, {"
+          - '"Variable": "$.STATUS",'
+          - '"StringEquals": "DONE",'
+          - '"Next": "Send Forensic Report"'
           - "}],"
           - '"Default": "Wait X Seconds"'
           - "},"
@@ -778,6 +782,11 @@ Resources:
           Action:
           - states:*
           Resource: "*"
+        - Sid: stepreport
+          Effect: Allow
+          Action:
+          - s3:GetObject
+          Resource: !Sub "arn:aws:s3:::${lambdas3bucketsname}/*"
 Outputs:
   VPCId:
     Description: VPCId of the newly created VPC

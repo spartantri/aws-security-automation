@@ -21,6 +21,7 @@ ssmclient = boto3.client('ssm')
 
 
 def lambda_handler(event, context):
+    print(event)
     instanceID = event['instanceID']
     S3BucketName = os.environ['OUTPUT_S3_BUCKETNAME']
     S3BucketRegion = os.environ['OUTPUT_S3_BUCKETREGION']
