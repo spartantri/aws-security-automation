@@ -8,7 +8,7 @@
 
 # THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
 # INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
-# PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT
+# PARTICULAR PURPOSE AND NON-INFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT
 # HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
 # OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 # SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
@@ -17,7 +17,7 @@ import boto3
 import json
 import logging
 import os
-import requests
+from botocore.vendored import requests
 
 client = boto3.client('s3')
 
@@ -26,17 +26,19 @@ HOOK_URL = os.environ['HookUrl']
 SLACK_CHANNEL = os.environ['SlackChannel']
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
+
+
 def lambda_handler(event, context):
+    print(event)
+    accountID = context.invoked_function_arn.split(":")[4]
     bucket = event['Records'][0]['s3']['bucket']['name']
     key = event['Records'][0]['s3']['object']['key'] 
-    download_path = '/tmp/key.txt'
+
     response = client.get_object(
         Bucket=bucket,
         Key=key
     )
     # print (response)
-    # s3_client.download_file(bucket, key, download_path).decode('utf-8')
-    # a.encode('utf-8').strip()
     content = response['Body'].read()
     # print(content)
     array = []
@@ -49,28 +51,35 @@ def lambda_handler(event, context):
             # print (s)
             array.append('"' + str(s) + '"')
     
-    print (array)   
+    print(array)
     # json_message = json.loads(json.loads(event['Records'][0]['Sns']['Message'])['TextMessage'])
-    instanceList = key.replace('incident-response/file-deleted-', '').replace(".txt", "");
-    print (instanceList)
+    instanceList = key.replace('incident-response/file-deleted-', '').replace(".txt", "")
+    print(instanceList)
     instanceArray = instanceList.split("-i-")
-    slack_message_text = formatMyMessage("i-" + instanceArray[1],instanceArray[0], array, "s3://" + bucket + "/" + key)
+    slack_message_text = formatMyMessage(
+        "i-" + instanceArray[1], instanceArray[0], array, "s3://" + bucket + "/" + key, accountID
+        )
     # Sends the message to Slack
-    response = requests.post(HOOK_URL, data=json.dumps(slack_message_text), headers={'Content-Type': 'application/json'})
+    response = requests.post(
+        HOOK_URL, data=json.dumps(slack_message_text), headers={'Content-Type': 'application/json'}
+        )
     logging.info("Response Status Code: ")
     # logging.info(response.status_code)
     return slack_message_text
 
-def formatMyMessage(victimInstanceID, instanceID, deletedLines, s3location):
-    
+
+def formatMyMessage(victimInstanceID, instanceID, deletedLines, s3location, accountID):
+    title = "Results for instance " + victimInstanceID + " being investigated for deleted files\n "
+    title += " \n For more information login to forensics instance : " + instanceID
+    title += " \n AWS Account: " + accountID + " \n S3 Location: " + s3location
     slack_message = {
         "attachments": [
             {
                 "fallback": "Required plain-text summary of the attachment.",
                 "color": "#b7121a",
-                "title": "Results for instance " +  victimInstanceID + " being investigated for deleted files\n " +" \n For more information login to forensics instance : " +  instanceID + " \n AWS Account: " + "469306637372" + " \n S3 Location: " + s3location ,
+                "title": title,
                 "text": "",
-                "fields":[{
+                "fields": [{
                         "value": "Details: " + '\n '.join(deletedLines)
                     },
                     {

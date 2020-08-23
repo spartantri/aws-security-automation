@@ -9,7 +9,7 @@
 
 # THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
 # INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
-# PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT
+# PARTICULAR PURPOSE AND NON-INFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT
 # HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
 # OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 # SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
@@ -18,17 +18,18 @@ import boto3
 
 ssmclient = boto3.client('ssm')
 
+
 def lambda_handler(event, context):
-    # Validates whetehr SSM is installed or not
+    # Validates whether SSM is installed or not
+    print(event)
     response = ssmclient.describe_instance_information()
-    print (response)
+    print(response)
     isSSMInstalled = False
 
     for item in response['InstanceInformationList']:
-    		if item['InstanceId'] == event['ForensicInstanceId']:
-    		    isSSMInstalled = True
-    		    event['SSM_STATUS'] = 'SUCCEEDED'
-
+        if item['InstanceId'] == event['ForensicInstanceId']:
+            isSSMInstalled = True
+            event['SSM_STATUS'] = 'SUCCEEDED'
 
     event['stauscheck'] = 1
     return event
