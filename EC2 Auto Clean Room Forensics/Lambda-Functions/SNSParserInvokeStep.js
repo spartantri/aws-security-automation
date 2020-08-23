@@ -10,7 +10,7 @@
 
 # THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
 # INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
-# PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT
+# PARTICULAR PURPOSE AND NON-INFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT
 # HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
 # OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 # SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
@@ -20,13 +20,15 @@ const aws = require("aws-sdk");
 
 exports.handler = (event, context, callback) => {
     // TODO implement
+    console.log(event)
     console.log(JSON.stringify(event))
     console.log(event.Records[0].Sns.Message)
     var stepfunctions = new aws.StepFunctions();
     var stepMessage = JSON.parse(event.Records[0].Sns.Message);
     console.log(stepMessage.detail);
-    console.log(stepMessage.detail["instance-id"]);
-    var instanceID = stepMessage.detail["instance-id"];
+    console.log(stepMessage.detail["resource"]["instanceDetails"]["instanceId"]);
+    // var instanceID = stepMessage.detail["instance-id"];
+    var instanceID = stepMessage.detail["resource"]["instanceDetails"]["instanceId"];
     var stepevent = '{"instanceID" :"' + instanceID + '"}'
     var params = {
           stateMachineArn: process.env.STEP_FUNCTION_ARN, /* required */
