@@ -759,6 +759,7 @@ Resources:
           - ec2:*
           - elasticloadbalancing:*
           - ssm:*
+          - autoscaling:*
           Resource: "*"
         - Sid: ListExistingRolesAndPolicies
           Effect: Allow
