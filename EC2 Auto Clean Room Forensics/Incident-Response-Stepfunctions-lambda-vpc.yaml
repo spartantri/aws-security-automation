@@ -38,10 +38,14 @@ Parameters:
   NodeRunTime:
     Type: String
     Description: Node Runtime
-    Default: nodejs6.10
+    Default: nodejs10.x
   AmiId:
     Type: String
     Description: AMI to use when launching the forensics instance
+  LatestAmiId:
+    Type: 'AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>'
+    Description: SSM parameter store key containing the AMI ID to use for the forensics instance, default is latest Amazon linux
+    Default: '/aws/service/ami-amazon-linux-latest/amzn2-ami-hvm-x86_64-gp2'
   instanceProfile:
     Type: String
     Description: Instance Profile Details Details
@@ -75,7 +79,7 @@ Parameters:
     AllowedPattern: "(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})/(\\d{1,2})"
     ConstraintDescription: must be a valid IP CIDR range of the form x.x.x.x/x.
   Ec2KeyPair:
-    Type: String
+    Type: AWS::EC2::KeyPair::KeyName
     Description: Key pair to use in starting a new instance
   OutputS3Bucket:
     Type: String
@@ -89,7 +93,7 @@ Resources:
   IncidentResponseStepFunction:
     Type: AWS::StepFunctions::StateMachine
     Properties:
-      StateMachineName: Sydney-Summit-Incident-Response-StateMachine
+      StateMachineName: Incident-Response-StateMachine
       DefinitionString:
         Fn::Join:
         - ''
@@ -266,7 +270,23 @@ Resources:
           - '"Type": "Task",'
           - '"Resource": "'
           - Fn::GetAtt:
-            - RunForesnsicAnalysis
+            - RunForensicAnalysis
+            - Arn
+          - "\","
+          - '"InputPath": "$",'
+          - '"Next": "Send Forensic Report",'
+          - '"Retry": [{'
+          - '"ErrorEquals": ["States.ALL"],'
+          - '"IntervalSeconds": 1,'
+          - '"MaxAttempts": 3,'
+          - '"BackoffRate": 2.0'
+          - "}]"
+          - "},"
+          - '"Send Forensic Report": {'
+          - '"Type": "Task",'
+          - '"Resource": "'
+          - Fn::GetAtt:
+            - SendForensicReport
             - Arn
           - "\","
           - '"InputPath": "$",'
@@ -322,10 +342,10 @@ Resources:
           ISOLATED_SECUTRITYGROUP:
             Ref: IsolatedInstanceSecurityGroup
     Type: AWS::Lambda::Function
-  RunForesnsicAnalysis:
+  RunForensicAnalysis:
     Properties:
-      FunctionName: sec-ir-8-runForesnsicAnalysis
-      Description: Function to Run Foresnsic Analysis
+      FunctionName: sec-ir-8-runForensicAnalysis
+      Description: Function to Run Forensic Analysis
       Handler: runForensicAnalysis.lambda_handler
       Runtime: python3.6
       Timeout: '300'
@@ -344,6 +364,33 @@ Resources:
             Ref: OutputS3Bucket
           OUTPUT_S3_BUCKETREGION:
             Ref: OutputS3BucketRegion
+    Type: AWS::Lambda::Function
+  SendForensicReport:
+    Properties:
+      FunctionName: sec-ir-9-sendForensicReport
+      Description: Function to Send Forensic Analysis Report
+      Handler: sendForensicReport.lambda_handler
+      Runtime: python3.6
+      Timeout: '300'
+      Role:
+        Fn::GetAtt:
+        - LambdaExecutionRole
+        - Arn
+      Code:
+        S3Bucket:
+          Ref: lambdas3bucketsname
+        S3Key:
+          Ref: lambdas3keyname
+      Environment:
+        Variables:
+          OUTPUT_S3_BUCKETNAME:
+            Ref: OutputS3Bucket
+          OUTPUT_S3_BUCKETREGION:
+            Ref: OutputS3BucketRegion
+          HookUrl:
+            Ref: HookUrlName
+          SlackChannel:
+            Ref: SlackChannelName
     Type: AWS::Lambda::Function
   createRemediationStepsLambda:
     Properties:
@@ -412,7 +459,7 @@ Resources:
           FORENSIC_SECUTRITYGROUP:
             Ref: InstanceSecurityGroup
           AMI_ID:
-            Ref: AmiId
+            Ref: LatestAmiId
           INSTANCE_PROFILE:
             Ref: instanceProfile
           SUBNET_ID:
@@ -465,7 +512,7 @@ Resources:
     Type: AWS::Lambda::Function
   SNSParserLambda:
     Properties:
-      FunctionName: sec-ir-9-invokeStepFunctions
+      FunctionName: sec-ir-0-invokeStepFunctions
       Description: Function parse SNS message and invoke Step functions
       Handler: SNSParserInvokeStep.handler
       Runtime:
