@@ -8,7 +8,7 @@
 
 # THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
 # INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
-# PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT
+# PARTICULAR PURPOSE AND NON-INFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT
 # HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
 # OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 # SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
@@ -16,31 +16,31 @@
 import boto3
 import os
 
+
 def lambda_handler(event, context):
     # TODO implement
-    print (event)
+    print(event)
     client = boto3.client('ec2')
     instanceID = event.get('instanceID')
     response = client.describe_instances(
-
         InstanceIds=[
             instanceID
         ]
     )
     volumeID = response['Reservations'][0]['Instances'][0]['BlockDeviceMappings'][0]['Ebs']['VolumeId']
-    print (volumeID)
+    print(volumeID)
     SnapShotDetails = client.create_snapshot(
         Description='Isolated Instance',
         VolumeId=volumeID
     )
+    client.create_tags(Resources=[SnapShotDetails['SnapshotId']], Tags=[{'Key': 'Name', 'Value': instanceID}])
     # TODO Dump Response into S3 - response
     # TODO Dump Response details into Snapshot - SnapShotDetails['SnapshotId']
 
-    print (response)
-    print (SnapShotDetails['SnapshotId'])
+    print(response)
+    print(SnapShotDetails['SnapshotId'])
 
     response = client.modify_instance_attribute(
-
         Groups=[
             os.environ['ISOLATED_SECUTRITYGROUP'],
         ],
@@ -48,7 +48,6 @@ def lambda_handler(event, context):
     )
 
     tagresponse = client.create_tags(
-
         Resources=[
             instanceID,
         ],
