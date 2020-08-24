@@ -42,7 +42,6 @@ def lambda_handler(event, context):
         AvailabilityZone=event.get('availabilityZone'),
         # response['Instances'][0]['Placement']['AvailabilityZone'],
         Size=int(os.environ['VolumeSize']),
-        SnapshotId=event.get('snapshotID'),
         TagSpecifications=[
             {
                 'ResourceType': 'volume',

@@ -26,7 +26,7 @@ def lambda_handler(event, context):
     S3BucketName = os.environ['OUTPUT_S3_BUCKETNAME']
     S3BucketRegion = os.environ['OUTPUT_S3_BUCKETREGION']
     commands = ['#!/bin/bash','date -u +"%Y-%m-%dT%H:%M:%SZ"',
-                'sudo mkfs /dev/xvdg','sudo mkdir /forensics','sudo mkfs /dev/xvdg',
+                'sudo mkfs /dev/xvdg','sudo mkdir /forensics','sudo mount /dev/xvdg /forensics',
                 'dd if=/dev/xvdf1 of=/forensics/' + instanceID + '.dd',
                 'fls -r -m -i /forensics/' + instanceID + '.dd >~/file-full-' + instanceID + '.txt',
                 'mactime -b ~/file-full-' + instanceID + '.txt $date >~/file-mac-' + instanceID + '.txt',
