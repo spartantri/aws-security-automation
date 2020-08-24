@@ -59,6 +59,13 @@ Parameters:
     Type: String
     Description: SNS RTopic
     Default: IncidentResponseTopic-v1
+  InstallSIFTForensics:
+    Type: String
+    Description: Install SIFT to the forensic station
+    Default: No
+    AllowedValues:
+      - Yes
+      - No
   lambdas3bucketsname:
     Type: String
     Description: Bucket name where lambda functions reside
@@ -364,6 +371,8 @@ Resources:
             Ref: OutputS3Bucket
           OUTPUT_S3_BUCKETREGION:
             Ref: OutputS3BucketRegion
+          InstallSIFT:
+            Ref: InstallSIFTForensics
     Type: AWS::Lambda::Function
   SendForensicReport:
     Properties:
