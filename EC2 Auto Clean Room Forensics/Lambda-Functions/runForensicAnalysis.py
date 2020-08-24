@@ -28,7 +28,8 @@ def lambda_handler(event, context):
     InitialSetup = ['#!/bin/bash','date -u +"%Y-%m-%dT%H:%M:%SZ"',
                 'sudo mkfs /dev/xvdg','sudo mkdir /forensics','sudo mount /dev/xvdg /forensics',
                 'sudo apt install sleuthkit -y']
-    SIFTinstall = ['sudo curl -Lo /usr/local/bin/sift https://github.com/sans-dfir/sift-cli/releases/download/v1.8.5/sift-cli-linux',
+    SIFTinstall = [ 'sudo apt update -y',
+                'sudo curl -Lo /usr/local/bin/sift https://github.com/sans-dfir/sift-cli/releases/download/v1.8.5/sift-cli-linux',
                 'sudo chmod +x /usr/local/bin/sift', 'sudo sift install --mode=server', 'sudo sift update']
     Forensicate = ['sudo dd if=/dev/xvdf1 of=/forensics/' + instanceID + '.dd',
                 'sudo fls -r -m -i /forensics/' + instanceID + '.dd >~/file-full-' + instanceID + '.txt',
@@ -46,8 +47,7 @@ def lambda_handler(event, context):
     if 'InstallSIFT' in os.environ:
         if os.environ['InstallSIFT'].lower() == "yes":
             commands = InitialSetup + SIFTinstall + Forensicate + Reporting
-    
-    
+
     response = ssmclient.send_command(
         InstanceIds= [event.get('ForensicInstanceId')],
         DocumentName='AWS-RunShellScript',
