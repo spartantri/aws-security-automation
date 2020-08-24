@@ -27,11 +27,14 @@ def lambda_handler(event, context):
     S3BucketRegion = os.environ['OUTPUT_S3_BUCKETREGION']
     commands = ['#!/bin/bash','date -u +"%Y-%m-%dT%H:%M:%SZ"',
                 'sudo mkfs /dev/xvdg','sudo mkdir /forensics','sudo mount /dev/xvdg /forensics',
-                'dd if=/dev/xvdf1 of=/forensics/' + instanceID + '.dd',
-                'fls -r -m -i /forensics/' + instanceID + '.dd >~/file-full-' + instanceID + '.txt',
-                'mactime -b ~/file-full-' + instanceID + '.txt $date >~/file-mac-' + instanceID + '.txt',
-                'fls -rd /forensics/' + instanceID + '.dd >~/file-deleted-' + instanceID + '.txt',
-                'sudo apt-get install cloud-utils ',
+                'sudo apt install sleuthkit -y',
+                'sudo curl -Lo /usr/local/bin/sift https://github.com/sans-dfir/sift-cli/releases/download/v1.8.5/sift-cli-linux',
+                'sudo chmod +x /usr/local/bin/sift', 'sudo sift install --mode=server', 'sudo sift update',
+                'sudo dd if=/dev/xvdf1 of=/forensics/' + instanceID + '.dd',
+                'sudo fls -r -m -i /forensics/' + instanceID + '.dd >~/file-full-' + instanceID + '.txt',
+                'sudo mactime -b ~/file-full-' + instanceID + '.txt $date >~/file-mac-' + instanceID + '.txt',
+                'sudo fls -rd /forensics/' + instanceID + '.dd >~/file-deleted-' + instanceID + '.txt',
+                'sudo apt-get install cloud-utils -y',
                 'EC2_INSTANCE_ID=$(ec2metadata --instance-id)',
                 'cp ~/file-deleted-' + instanceID + '.txt ~/file-deleted-$EC2_INSTANCE_ID-' + instanceID+ '.txt',
                 'cp ~/file-mac-' + instanceID + '.txt ~/$EC2_INSTANCE_ID.txt',
@@ -46,7 +49,7 @@ def lambda_handler(event, context):
         DocumentName='AWS-RunShellScript',
         Parameters={
             'commands': commands,
-            'executionTimeout': ['600'] # Seconds all commands have to complete in
+            'executionTimeout': ['3600'] # Seconds all commands have to complete in
             },
         Comment='SSM Command Execution',
         # sydney-summit-incident-response
