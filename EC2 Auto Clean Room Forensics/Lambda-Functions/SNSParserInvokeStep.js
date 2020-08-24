@@ -28,6 +28,7 @@ exports.handler = (event, context, callback) => {
     console.log(stepMessage.detail);
     console.log(stepMessage.detail["resource"]["instanceDetails"]["instanceId"]);
     // var instanceID = stepMessage.detail["instance-id"];
+    // var instanceID = stepMessage.detail["instanceID"];
     var instanceID = stepMessage.detail["resource"]["instanceDetails"]["instanceId"];
     var stepevent = '{"instanceID" :"' + instanceID + '"}'
     var params = {

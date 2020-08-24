@@ -27,26 +27,30 @@ def lambda_handler(event, context):
     S3BucketRegion = os.environ['OUTPUT_S3_BUCKETREGION']
     InitialSetup = ['#!/bin/bash','date -u +"%Y-%m-%dT%H:%M:%SZ"',
                 'sudo mkfs /dev/xvdg','sudo mkdir /forensics','sudo mount /dev/xvdg /forensics',
-                'sudo apt install sleuthkit -y']
+                'sudo apt install sleuthkit hashdeep -y', 'sudo apt-get install cloud-utils -y']
     SIFTinstall = [ 'sudo apt update -y',
                 'sudo curl -Lo /usr/local/bin/sift https://github.com/sans-dfir/sift-cli/releases/download/v1.8.5/sift-cli-linux',
                 'sudo chmod +x /usr/local/bin/sift', 'sudo sift install --mode=server', 'sudo sift update']
     Forensicate = ['sudo dd if=/dev/xvdf1 of=/forensics/' + instanceID + '.dd',
-                'sudo fls -r -m -i /forensics/' + instanceID + '.dd >~/file-full-' + instanceID + '.txt',
-                'sudo mactime -b ~/file-full-' + instanceID + '.txt $date >~/file-mac-' + instanceID + '.txt',
-                'sudo fls -rd /forensics/' + instanceID + '.dd >~/file-deleted-' + instanceID + '.txt']
-    Reporting = ['sudo apt-get install cloud-utils -y',
-                'EC2_INSTANCE_ID=$(ec2metadata --instance-id)',
-                'cp ~/file-deleted-' + instanceID + '.txt ~/file-deleted-$EC2_INSTANCE_ID-' + instanceID+ '.txt',
-                'cp ~/file-mac-' + instanceID + '.txt ~/$EC2_INSTANCE_ID.txt',
-                'cp ~/file-full-' + instanceID + '.txt ~/file-full-$EC2_INSTANCE_ID.txt',
-                'aws s3 cp ~/file-full-' + instanceID + '.txt s3://' + S3BucketName + '/incident-response/' + instanceID + '/',
-                'aws s3 cp ~/file-deleted-' + instanceID + '-' + instanceID + '.txt s3://' + S3BucketName + '/incident-response/' + instanceID+ '/',
-                'aws s3 cp ~/file-mac-' + instanceID + '.txt s3://' + S3BucketName +'/incident-response/' + instanceID + '/']
-    commands = InitialSetup + Forensicate + Reporting
+                'sudo fls -r -m -i /forensics/' + instanceID + '.dd >/forensics/file-full-' + instanceID + '.txt',
+                'sudo mactime -b /forensics/file-full-' + instanceID + '.txt $date >/forensics/file-mac-' + instanceID + '.txt',
+                'sudo fls -rd /forensics/' + instanceID + '.dd >/forensics/file-deleted-' + instanceID + '.txt']
+    Reporting = ['EC2_INSTANCE_ID=$(ec2metadata --instance-id)',
+                'cp /forensics/file-deleted-' + instanceID + '.txt /forensics/file-deleted-$EC2_INSTANCE_ID-' + instanceID+ '.txt',
+                'cp /forensics/file-mac-' + instanceID + '.txt /forensics/$EC2_INSTANCE_ID.txt',
+                'cp /forensics/file-full-' + instanceID + '.txt /forensics/file-full-$EC2_INSTANCE_ID.txt',
+                'aws s3 cp /forensics/file-full-' + instanceID + '.txt s3://' + S3BucketName + '/incident-response/' + instanceID + '/',
+                'aws s3 cp /forensics/file-deleted-' + instanceID + '-' + instanceID + '.txt s3://' + S3BucketName + '/incident-response/' + instanceID+ '/',
+                'aws s3 cp /forensics/file-mac-' + instanceID + '.txt s3://' + S3BucketName +'/incident-response/' + instanceID + '/']
+    AlternativeForensics = ['if [ "$(find /forensics/file-full-' + instanceID + '.txt -printf %s)" == "0" ]; then exit; fi',
+                'sudo mkdir /mnt/' + instanceID, 'target=$(sudo losetup --partscan --fin --show /forensics/' + instanceID + ')',
+                'sudo mount $target /mnt/' + instanceID,
+                'sudo find /mnt/' + instanceID + ' -type f -printf "%P,%A+,%T+,%C+,%u,%g,%M,%s\n" >/forensics/file-mac-' + instanceID + '.txt',
+                'sudo hashdeep /mnt/' + instanceID + '-r >/forensics/file-mac-' + instanceID + '.txt']
+    commands = InitialSetup + Forensicate + Reporting + AlternativeForensics + Reporting
     if 'InstallSIFT' in os.environ:
         if os.environ['InstallSIFT'].lower() == "yes":
-            commands = InitialSetup + SIFTinstall + Forensicate + Reporting
+            commands = commands + SIFTinstall
 
     response = ssmclient.send_command(
         InstanceIds= [event.get('ForensicInstanceId')],
