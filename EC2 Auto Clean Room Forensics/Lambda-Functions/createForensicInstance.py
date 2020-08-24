@@ -22,6 +22,18 @@ ec2client = boto3.client('ec2')
 def lambda_handler(event, context):
     # Create Instances
     response = ec2client.run_instances(
+        BlockDeviceMappings=[
+            {
+                'DeviceName': 'Forensic acquisition',
+                'VirtualName': 'Forensic acquisition',
+                'Ebs': {
+                    'DeleteOnTermination': True,
+                    'VolumeSize': 120,
+                    'VolumeType': 'gp2',
+                    'Encrypted': False
+                }
+            },
+        ],
         ImageId=os.environ['AMI_ID'],
         InstanceType='t2.small',
         MaxCount=1,
@@ -29,7 +41,6 @@ def lambda_handler(event, context):
         Monitoring={
             'Enabled': True
         },
-
         IamInstanceProfile={
             'Arn': os.environ['INSTANCE_PROFILE']
         },

@@ -21,10 +21,27 @@ ec2client = boto3.client('ec2')
 def lambda_handler(event, context):
     # TODO Create volume from the Snapshot ID passed in the event
     print(event)
+    volumestorage = ec2client.create_volume(
+        AvailabilityZone=event.get('availabilityZone'),
+        # response['Instances'][0]['Placement']['AvailabilityZone'],
+        Size=int(os.environ['VolumeSize']),
+        SnapshotId=event.get('snapshotID'),
+        TagSpecifications=[
+            {
+                'ResourceType': 'volume',
+                'Tags': [
+                    {
+                        'Key': 'Name',
+                        'Value': 'Isolated VOLUME backup'
+                    },
+                ]
+            },
+        ]
+    )
     volumeresponse = ec2client.create_volume(
         AvailabilityZone=event.get('availabilityZone'),
         # response['Instances'][0]['Placement']['AvailabilityZone'],
-        Size=100,
+        Size=int(os.environ['VolumeSize']),
         SnapshotId=event.get('snapshotID'),
         TagSpecifications=[
             {
@@ -48,7 +65,13 @@ def lambda_handler(event, context):
     response = ec2client.attach_volume(
         InstanceId=event.get('ForensicInstanceId'),
         VolumeId=volumeresponse['VolumeId'],
-        Device='/dev/sda2',
+        Device='/dev/xvdf',
+
+    )
+    storage = ec2client.attach_volume(
+        InstanceId=event.get('ForensicInstanceId'),
+        VolumeId=volumestorage['VolumeId'],
+        Device='/dev/xvdg',
 
     )
     #Adds wait time for SSM

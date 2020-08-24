@@ -25,7 +25,8 @@ Before running the cloud formation template, make sure you have teh following:
   the cloud formation template use the public SSM parameter to get the latest Amazon Linux 2 AMI ID.
 - Create a bucket to store the lambda functions in a zip file.
 - Create a bucket to store the reports of the automated forensic tools (It can be the same bucket).
-- Create an instance profile to allow management of the Forensic station with Systems Manager.
+- Create an instance profile to allow management of the Forensic station with Systems Manager and the S3 bucket used to
+  store the forensic reports.
 
 # Step 1 : Launch Cloud Formation Template - Incident-Response-Stepfunctions-lambda-vpc.json
 
