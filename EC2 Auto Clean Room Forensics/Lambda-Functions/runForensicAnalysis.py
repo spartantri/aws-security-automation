@@ -27,7 +27,7 @@ def lambda_handler(event, context):
     S3BucketRegion = os.environ['OUTPUT_S3_BUCKETREGION']
     InitialSetup = ['#!/bin/bash','date -u +"%Y-%m-%dT%H:%M:%SZ"',
                 'sudo mkfs /dev/xvdg','sudo mkdir /forensics','sudo mount /dev/xvdg /forensics',
-                'sudo apt install sleuthkit hashdeep -y', 'sudo apt-get install cloud-utils -y']
+                'sudo apt-get install sleuthkit hashdeep -y', 'sudo apt-get install cloud-utils -y']
     SIFTinstall = [ 'sudo apt update -y',
                 'sudo curl -Lo /usr/local/bin/sift https://github.com/sans-dfir/sift-cli/releases/download/v1.8.5/sift-cli-linux',
                 'sudo chmod +x /usr/local/bin/sift', 'sudo sift install --mode=server', 'sudo sift update']
