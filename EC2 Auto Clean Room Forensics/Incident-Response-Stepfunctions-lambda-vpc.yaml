@@ -156,7 +156,7 @@ Resources:
           - "}, {"
           - '"Variable": "$.STATUS",'
           - '"StringEquals": "DONE",'
-          - '"Next": "Send Forensic Report"'
+          - '"Next": "Already Isolated"'
           - "}],"
           - '"Default": "Wait X Seconds"'
           - "},"
@@ -304,7 +304,10 @@ Resources:
           - '"MaxAttempts": 3,'
           - '"BackoffRate": 2.0'
           - "}]"
-          - "}"
+          - "},"
+          - '"Already Isolated": {'
+          - '"Type": "Pass",'
+          - '"End": true'
           - "}"
           - "}"
       RoleArn:

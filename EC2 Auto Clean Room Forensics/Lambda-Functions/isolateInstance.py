@@ -115,10 +115,8 @@ def lambda_handler(event, context):
     except IndexError:
         print("Instance is not part of any autoscaling group")
         response = get_instance_by_id(instanceID)
-        if response == 'DONE':
-            return 'DONE'
-        if response == 'SUCCEEDED':
-            return response
+        event['STATUS'] = response
+        return event
     if targetGroups:
         # Iterates ELB and gets the ELB where the instance is attached
         for key in targetGroups['TargetGroups']:

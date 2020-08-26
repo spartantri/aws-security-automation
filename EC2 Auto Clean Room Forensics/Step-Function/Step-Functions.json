@@ -1,5 +1,5 @@
 {
-  "Comment": "A state machine that submits a Job to AWS Batch and monitors the Job until it completes. ",
+  "Comment": " A state machine that submits a Job to AWS Batch and monitors the Job until it completes. ",
   "StartAt": "Create Support Ticket Job",
   "States": {
     "Create Support Ticket Job": {
@@ -52,6 +52,11 @@
           "Variable": "$.STATUS",
           "StringEquals": "SUCCEEDED",
           "Next": "Alert Security Team on Isolation and Incident"
+        },
+        {
+          "Variable": "$.STATUS",
+          "StringEquals": "DONE",
+          "Next": "Already Isolated"
         }
       ],
       "Default": "Wait X Seconds"
@@ -201,6 +206,10 @@
           "BackoffRate": 2
         }
       ]
+    },
+    "Already Isolated": {
+      "Type": "Pass",
+      "End": true
     }
   }
 }
