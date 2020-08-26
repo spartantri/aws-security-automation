@@ -17,7 +17,7 @@ Description: 'You will be billed for the AWS resources used if you create a stac
 Parameters:
   VPCCIDR:
     Type: String
-    Description: IP Address range for the VPN connected VPC
+    Description: IP Address range for the VPC to use for the forensic analysis instances
     MinLength: '9'
     MaxLength: '18'
     Default: 10.1.0.0/16
@@ -25,7 +25,7 @@ Parameters:
     ConstraintDescription: must be a valid IP CIDR range of the form x.x.x.x/x.
   SubnetCIDR:
     Type: String
-    Description: IP Address range for the VPN connected Subnet
+    Description: IP Address range for the Subnet to use for the forensic analysis instances
     MinLength: '9'
     MaxLength: '18'
     Default: 10.1.0.0/24
@@ -33,48 +33,48 @@ Parameters:
     ConstraintDescription: must be a valid IP CIDR range of the form x.x.x.x/x.
   VpcId:
     Type: AWS::EC2::VPC::Id
-    Description: VpcId of your existing Virtual Private Cloud (VPC)
+    Description: VPC Id of your existing Virtual Private Cloud (VPC) where the monitored workloads are hosted
     ConstraintDescription: must be the VPC Id of an existing Virtual Private Cloud.
   NodeRunTime:
     Type: String
-    Description: Node Runtime
+    Description: Node Runtime for the initial lambda to invoke the step function (nodejs10.x or 12.x)
     Default: nodejs10.x
   AmiId:
     Type: String
-    Description: AMI to use when launching the forensics instance (Tested with Ubuntu 16)
+    Description: Amazon Machine Image (AMI) Id to use when launching the forensics instance (tested with Ubuntu 16)
   instanceProfile:
     Type: String
-    Description: Instance Profile Details Details
+    Description: EC2 Instance Profile ARN to use on the forensic analysis instances
   IsolatedInstanceSecurityGroup:
     Type: String
-    Description: Security Group for isolation
+    Description: Security Group for isolation of affected EC2 instances
   HookUrlName:
     Type: String
-    Description: AWS Slack URL Name
+    Description: Slack URL application hook to send notifications
   SlackChannelName:
     Type: String
-    Description: AWS Slack Channel Name to publish the message
+    Description: Slack Channel Name to publish the message
     Default: "#aws-security"
   IncidentResponseTopic:
     Type: String
-    Description: SNS RTopic
+    Description: SNS Topic to send notifications that will trigger the IR process
     Default: IncidentResponseTopic-v1
   InstallSIFTForensics:
     Type: String
-    Description: Install SIFT to the forensic station
+    Description: Option to install SIFT on the forensic station, use only if required
     Default: No
     AllowedValues:
       - Yes
       - No
   lambdas3bucketsname:
     Type: String
-    Description: Bucket name where lambda functions reside
+    Description: Bucket name where lambda functions are stored
   lambdas3keyname:
     Type: String
-    Description: Key name of lambda functions in S3
+    Description: Key name of lambda functions zip file in S3
     Default: incidentresponse.zip
   SSHLocation:
-    Description: " The IP address range that can be used to SSH to the EC2 instances"
+    Description: The IP address range that will be granted SSH access to the forensics EC2 instances
     Type: String
     MinLength: '9'
     MaxLength: '18'
@@ -83,10 +83,10 @@ Parameters:
     ConstraintDescription: must be a valid IP CIDR range of the form x.x.x.x/x.
   Ec2KeyPair:
     Type: AWS::EC2::KeyPair::KeyName
-    Description: Key pair to use in starting a new instance
+    Description: Key pair to use the forensics EC2 instances
   OutputS3Bucket:
     Type: String
-    Description: Name of S3 bucket where forensic analysis report will be stored
+    Description: Name of S3 bucket where the forensic analysis reports will be stored
   OutputS3BucketRegion:
     Type: String
     Description: Output S3 bucket region
