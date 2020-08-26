@@ -70,23 +70,23 @@ The cloud formation template creates the following
 
 ![Logo](CFN-Input.png)
 Parameters:
-VPCCIDR: IP Address range for the VPC to use for the forensic analysis instances
-SubnetCIDR: IP Address range for the Subnet to use for the forensic analysis instances
-VpcId: VPC Id of your existing Virtual Private Cloud (VPC) where the monitored workloads are hosted
-NodeRunTime: Node Runtime for the initial lambda to invoke the step function (nodejs10.x or 12.x)
-AmiId: Amazon Machine Image (AMI) Id to use when launching the forensics instance (tested with Ubuntu 16)
-instanceProfile: EC2 Instance Profile ARN to use on the forensic analysis instances
-IsolatedInstanceSecurityGroup: Security Group for isolation of affected EC2 instances
-HookUrlName: Slack URL application hook to send notifications
-SlackChannelName: Slack Channel Name to publish the message
-IncidentResponseTopic: SNS Topic to send notifications that will trigger the IR process
-InstallSIFTForensics: Option to install SIFT on the forensic station, use only if required
-lambdas3bucketsname: Bucket name where lambda functions are stored
-lambdas3keyname: Key name of lambda functions zip file in S3
-SSHLocation: The IP address range that will be granted SSH access to the forensics EC2 instances
-Ec2KeyPair: Key pair to use the forensics EC2 instances
-OutputS3Bucket: Name of S3 bucket where the forensic analysis reports will be stored
-OutputS3BucketRegion: Output S3 bucket region
+- VPCCIDR: IP Address range for the VPC to use for the forensic analysis instances
+- SubnetCIDR: IP Address range for the Subnet to use for the forensic analysis instances
+- VpcId: VPC Id of your existing Virtual Private Cloud (VPC) where the monitored workloads are hosted
+- NodeRunTime: Node Runtime for the initial lambda to invoke the step function (nodejs10.x or 12.x)
+- AmiId: Amazon Machine Image (AMI) Id to use when launching the forensics instance (tested with Ubuntu 16)
+- instanceProfile: EC2 Instance Profile ARN to use on the forensic analysis instances
+- IsolatedInstanceSecurityGroup: Security Group for isolation of affected EC2 instances
+- HookUrlName: Slack URL application hook to send notifications
+- SlackChannelName: Slack Channel Name to publish the message
+- IncidentResponseTopic: SNS Topic to send notifications that will trigger the IR process
+- InstallSIFTForensics: Option to install SIFT on the forensic station, use only if required
+- lambdas3bucketsname: Bucket name where lambda functions are stored
+- lambdas3keyname: Key name of lambda functions zip file in S3
+- SSHLocation: The IP address range that will be granted SSH access to the forensics EC2 instances
+- Ec2KeyPair: Key pair to use the forensics EC2 instances
+- OutputS3Bucket: Name of S3 bucket where the forensic analysis reports will be stored
+- OutputS3BucketRegion: Output S3 bucket region
 
 # Step 2 Create Lambda functions which will be triggered for every S3 Create
 
