@@ -24,7 +24,7 @@ from urllib.request import Request, urlopen
 from urllib.error import URLError, HTTPError
 from urllib import parse
 
-region=os.environ['AWS_REGION']
+region = os.environ['AWS_REGION']
 boto_config = BotoCoreConfig(read_timeout=65, region_name=region)
 client = boto3.client('stepfunctions', config=boto_config)
 
@@ -34,63 +34,59 @@ SLACK_CHANNEL = os.environ['SlackChannel']
 activityArn = os.environ['ActivityArn']
 
 logger = logging.getLogger()
-logger.setLevel(logging.DEBUG)
-
-
-slack_ping = {
-        "attachments": [
-            {
-                "fallback": "Check kill or leave hearthbeat.",
-                "color": "#b7121a",
-                "title": "Check kill or leave hearthbeat.",
-                "text": "",
-                "fields": [{
-                        "value": "Check kill or leave hearthbeat."
-                    }]
-            }
-        ]
-    }
+logger.setLevel(logging.INFO)
 
 
 def lambda_handler(event, context):
-    #req = Request(HOOK_URL, json.dumps(slack_ping).encode('utf-8'))
-    #ping = urlopen(req)
-    #ping.read()
-    #logger.info("Ping posted to %s", SLACK_CHANNEL)
+    response = 'FAILED'
+    instanceID = "i-99999999"
+    status = 'DONE'
     try:
-        response = client.get_activity_task(activityArn=activityArn,workerName='sec-ir-A')
-        logger.info(response)
+        task_response = client.get_activity_task(activityArn=activityArn, workerName='sec-ir-A')
+        logger.info(task_response)
+        logger.info(type(task_response))
     except:
-        logger.info("No activities scheduled")
+        logger.info("Exception")
         return
-    if 'taskToken' in response:
-        logger.info("Received taskToken {}".format(response['taskToken']))
-        logger.info(response)
+
+    if 'input' not in task_response:
+        logger.info("No activities scheduled")
+        event['STATUS'] = response
+        return event
+    else:
+        # logger.info(task_response['input'])
+        # logger.info(json.loads(task_response['input']).keys())
+        # logger.info(task_response.keys())
+        instanceID = json.loads(task_response['input'])['instanceID']
+    if 'taskToken' in task_response:
+        logger.info("Received taskToken {}".format(task_response['taskToken']))
     else:
         logger.info("No taskToken received")
         return
-    #instanceID = event['input']['instanceID']
-    #status = event['input']['STATUS']
-    instanceID="i-99999999"
-    status = 'DONE'
-    taskToken = response['taskToken']
+    taskToken = task_response['taskToken']
     slack_message_text = formatMyMessage(instanceID, status, taskToken)
     logger.info(slack_message_text)
     # slack_message_text = response
     req = Request(HOOK_URL, json.dumps(slack_message_text).encode('utf-8'))
     try:
-        response = urlopen(req)
-        response.read()
+        slack_response = urlopen(req)
+        slack_response.read()
         logger.info("Message posted to %s", SLACK_CHANNEL)
+        response = 'SUCCEEDED'
     except HTTPError as e:
         logger.error("Request failed: %d %s", e.code, e.reason)
     except URLError as e:
         logger.error("Server connection failed: %s", e.reason)
 
-    return
+    event['STATUS'] = response
+    return event
 
 
 def formatMyMessage(instanceID, status, taskToken):
+    if 'APIGatewayApprovals' in os.environ:
+        APIGatewayApprovals = os.environ['APIGatewayApprovals']
+    else:
+        APIGatewayApprovals = ""
     title = "Authorization required!! \n Security Incident handled \n"
     title += " Instance Isolated due to security incident detected : " + instanceID
     previous_steps = '\n 1. Instance isolated with quarantine SG and NACL \n'
@@ -99,9 +95,11 @@ def formatMyMessage(instanceID, status, taskToken):
     previous_steps += ' 4. Forensic analysis of volume performed \n'
     previous_steps += ' 5. Forensic report sent to security channel'
     kill_link = '\n To Kill the affected instance go to : \n'
-    kill_link += 'https://09szp219il.execute-api.us-west-2.amazonaws.com/DFIR/kill-it?taskToken=' + parse.quote_plus(taskToken)
+    kill_link += APIGatewayApprovals + '/kill-it?taskToken=' + parse.quote_plus(
+        taskToken)
     leave_link = '\n To keep the affected instance running in quarantine go to : \n'
-    leave_link += 'https://09szp219il.execute-api.us-west-2.amazonaws.com/DFIR/leave-it?taskToken=' + parse.quote_plus(taskToken)
+    leave_link += APIGatewayApprovals + '/leave-it?taskToken=' + parse.quote_plus(
+        taskToken)
     slack_message = {
         "attachments": [
             {
@@ -110,8 +108,8 @@ def formatMyMessage(instanceID, status, taskToken):
                 "title": title,
                 "text": "",
                 "fields": [{
-                        "value": "Previous steps : " + previous_steps
-                    },
+                    "value": "Previous steps : " + previous_steps
+                },
                     {
                         "value": "Instance under isolation: " + instanceID
                     },

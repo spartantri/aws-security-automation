@@ -108,31 +108,44 @@ def isolate_nacl(instanceID):
     Instances = ec2client.describe_instances(
         InstanceIds=[instanceID]
     )
-    VPCID = Instances['Reservations'][0]['Instances'][0]['VpcId']
-    SubnetID = Instances['Reservations'][0]['Instances'][0]['SubnetId']
-    for nacl in ec2client.describe_network_acls()['NetworkAcls']:
-        if nacl['VpcId'] == VPCID:
-            for association in nacl['Associations']:
-                if association['SubnetId'] == SubnetID:
+    if len(Instances) > 0:
+        VPCID = Instances['Reservations'][0]['Instances'][0]['VpcId']
+        SubnetID = Instances['Reservations'][0]['Instances'][0]['SubnetId']
+        cidr = Instances['Reservations'][0]['Instances'][0]['NetworkInterfaces'][0]['PrivateIpAddresses'][0]['PrivateIpAddress'] + "/32"
+        for nacl in ec2client.describe_network_acls()['NetworkAcls']:
+            if nacl['VpcId'] == VPCID:
+                for association in nacl['Associations']:
                     if association['SubnetId'] == SubnetID:
-                        nextrule = find_nextrule(nacl['Entries'])
-                        cidr = Instances['Reservations'][0]['Instances'][0]['NetworkInterfaces'][0]['PrivateIpAddresses'][0]['PrivateIpAddress'] + "/32"
-                        naclID = nacl['NetworkAclId']
-                        response = ec2client.create_network_acl_entry(
-                            CidrBlock=cidr, NetworkAclId=naclID,Egress=True,Protocol="-1",RuleAction='deny',RuleNumber=nextrule
-                            )
-                        print(response)
-                        return
+                        if association['SubnetId'] == SubnetID:
+                            nextrule = find_nextrule(nacl['Entries'], cidr)
+                            naclID = nacl['NetworkAclId']
+                            if nextrule == 0:
+                                return
+                            elif nextrule == 1:
+                                from os import environ
+                                FORENSIC_SOURCE = environ['FORENSIC_SOURCE']
+                                ec2client.create_network_acl_entry(
+                                    CidrBlock=FORENSIC_SOURCE, NetworkAclId=naclID, Egress=True, Protocol="-1", RuleAction='deny',
+                                    RuleNumber=nextrule
+                                )
+                                nextrule += 1
+                            response = ec2client.create_network_acl_entry(
+                                CidrBlock=cidr, NetworkAclId=naclID,Egress=True,Protocol="-1",RuleAction='deny',RuleNumber=nextrule
+                                )
+                            print(response)
+                            return
     return
 
 
-def find_nextrule(entries):
+def find_nextrule(entries, cidr):
     if len(entries) == 0:
         return 1
     nextrule = 0
     for entry in entries:
         if entry['Egress']:
             print(entry['RuleNumber'], entry['RuleAction'], entry['CidrBlock'])
+            if entry['CidrBlock'] == cidr and entry['RuleAction'] == 'deny':
+                return 0
             if entry['RuleNumber'] - (nextrule + 1) <= 0:
                 nextrule = nextrule + 1
             else:
@@ -140,6 +153,7 @@ def find_nextrule(entries):
                 break
     print("Next rule :" + str(nextrule))
     return nextrule
+
 
 # Instance ID is passed as parameter
 # Leverages elbv2 SDK to retrieve the details of ELB where the instance is attached
@@ -149,14 +163,23 @@ def lambda_handler(event, context):
     instanceID = event.get('instanceID')
     # tag_instance(instanceID)
     response = 'FAILED'
+    standalone = False
     targetGroups = elbv2client.describe_target_groups()
     try:
         AutoScalingGroupName = get_asginstances_byid(instanceID)
     except IndexError:
         print("Instance is not part of any autoscaling group")
-        response = get_instance_by_id(instanceID)
-        event['STATUS'] = response
-        return event
+        standalone = True
+    if standalone:
+        try:
+            response = get_instance_by_id(instanceID)
+            event['STATUS'] = response
+            return event
+        except IndexError:
+            print("Instance is no longer available")
+            event['STATUS'] = "DONE"
+            return event
+
     if targetGroups:
         # Iterates ELB and gets the ELB where the instance is attached
         for key in targetGroups['TargetGroups']:

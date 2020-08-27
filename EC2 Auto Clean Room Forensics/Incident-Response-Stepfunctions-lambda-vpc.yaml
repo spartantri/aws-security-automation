@@ -351,6 +351,8 @@ Resources:
         Variables:
           ISOLATED_SECUTRITYGROUP:
             Ref: IsolatedInstanceSecurityGroup
+          FORENSIC_SOURCE:
+            Ref: SSHLocation
     Type: AWS::Lambda::Function
   RunForensicAnalysis:
     Properties:

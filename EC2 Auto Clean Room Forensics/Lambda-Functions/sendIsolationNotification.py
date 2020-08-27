@@ -18,7 +18,6 @@ import json
 import logging
 import os
 
-# from base64 import b64decode
 from urllib.request import Request, urlopen
 from urllib.error import URLError, HTTPError
 
@@ -50,7 +49,7 @@ def lambda_handler(event, context):
 
 
 def formatMyMessage(instanceID, targetGroupArn):
-    title = "High Alert!! \n Security Incident detected \n"
+    title = "High Severity Alert!! \n Security Incident detected \n"
     title += " Instance Isolated due to security incident detected by guard duty from ALB/Autoscaling : " + instanceID
     next_steps = '\n 1. Snapshot of the volume will be created \n'
     next_steps += ' 2. Snapshot will be mounted into volume for Forensic Analysis \n'
