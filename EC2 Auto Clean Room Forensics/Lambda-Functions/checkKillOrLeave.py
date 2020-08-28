@@ -83,10 +83,10 @@ def lambda_handler(event, context):
 
 
 def formatMyMessage(instanceID, status, taskToken):
-    if 'APIGatewayApprovals' in os.environ:
+    try:
         APIGatewayApprovals = os.environ['APIGatewayApprovals']
-    else:
-        APIGatewayApprovals = ""
+    except KeyError:
+        APIGatewayApprovals = " https://execute-api.us-west-2.amazonaws.com"
     title = "Authorization required!! \n Security Incident handled \n"
     title += " Instance Isolated due to security incident detected : " + instanceID
     previous_steps = '\n 1. Instance isolated with quarantine SG and NACL \n'
@@ -94,12 +94,104 @@ def formatMyMessage(instanceID, status, taskToken):
     previous_steps += ' 3. Forensic Instance created and the volume was mounted for forensic analysis \n'
     previous_steps += ' 4. Forensic analysis of volume performed \n'
     previous_steps += ' 5. Forensic report sent to security channel'
-    kill_link = '\n To Kill the affected instance go to : \n'
-    kill_link += APIGatewayApprovals + '/kill-it?taskToken=' + parse.quote_plus(
-        taskToken)
-    leave_link = '\n To keep the affected instance running in quarantine go to : \n'
-    leave_link += APIGatewayApprovals + '/leave-it?taskToken=' + parse.quote_plus(
-        taskToken)
+    kill_link = APIGatewayApprovals + '/kill-it?taskToken=' + parse.quote_plus(taskToken)
+    kill_link += '&instanceID=' + instanceID
+    quarantine_link = APIGatewayApprovals + '/leave-it?taskToken=' + parse.quote_plus(taskToken)
+    quarantine_link += '&instanceID=' + instanceID
+    block_message = {
+        "blocks": [
+            {
+                "type": "header",
+                "text": {
+                    "type": "plain_text",
+                    "text": title
+                }
+            },
+            {
+                "type": "divider"
+            },
+            {
+                "type": "section",
+                "text": {
+                    "text": "Authorize *terminate* instance or keep it in *quarantine*?",
+                    "type": "mrkdwn"
+                },
+                "fields": [
+                    {
+                        "type": "mrkdwn",
+                        "text": previous_steps
+                    }
+                ]
+            },
+            {
+                "type": "actions",
+                "block_id": "actions1",
+                "elements": [
+                    {
+                        "type": "button",
+                        "text": {
+                            "type": "plain_text",
+                            "text": "Terminate it"
+                        },
+                        "style": "danger",
+                        "value": "Terminate",
+                        "action_id": "Terminate",
+                        "url": kill_link,
+                        "confirm": {
+                               "title": {
+                                            "type": "plain_text",
+                                            "text": "Are you sure?"
+                                        },
+                                            "text": {
+                                            "type": "mrkdwn",
+                                            "text": "Are you sure?"
+                                        },
+                                        "confirm": {
+                                            "type": "plain_text",
+                                            "text": "Do it"
+                                        },
+                                        "deny": {
+                                            "type": "plain_text",
+                                            "text": "Stop, I've changed my mind!"
+                                        }
+                                }
+                    },
+                    {
+                        "type": "button",
+                        "text": {
+                            "type": "plain_text",
+                            "text": "Quarantine it"
+                        },
+                        "style": "primary",
+                        "value": "Quarantine",
+                        "action_id": "Quarantine",
+                        "url": quarantine_link,
+                        "confirm": {
+                               "title": {
+                                            "type": "plain_text",
+                                            "text": "Are you sure?"
+                                        },
+                                            "text": {
+                                            "type": "mrkdwn",
+                                            "text": "Are you sure?"
+                                        },
+                                        "confirm": {
+                                            "type": "plain_text",
+                                            "text": "Do it"
+                                        },
+                                        "deny": {
+                                            "type": "plain_text",
+                                            "text": "Stop, I've changed my mind!"
+                                        }
+                                }
+                    }
+                ]
+            },
+            {
+                "type": "divider"
+            }
+        ]
+    }
     slack_message = {
         "attachments": [
             {
@@ -120,9 +212,9 @@ def formatMyMessage(instanceID, status, taskToken):
                         "value": "Kill instance : " + kill_link
                     },
                     {
-                        "value": "Quarantine instance : " + leave_link
+                        "value": "Quarantine instance : " + quarantine_link
                     }]
             }
         ]
     }
-    return slack_message
+    return block_message

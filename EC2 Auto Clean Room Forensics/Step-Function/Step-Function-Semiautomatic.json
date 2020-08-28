@@ -1,0 +1,251 @@
+{
+  "Comment": " A state machine that submits a Job to AWS Batch and monitors the Job until it completes. ",
+  "StartAt": "Create Support Ticket Job",
+  "States": {
+    "Create Support Ticket Job": {
+      "Type": "Task",
+      "Resource": "arn:aws:lambda:us-west-2:<<Account Number>>:function:sec-ir-1-createSupportTicket",
+      "ResultPath": "$.supportID",
+      "Next": "Start Isolating the instance",
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "IntervalSeconds": 1,
+          "MaxAttempts": 3,
+          "BackoffRate": 2
+        }
+      ]
+    },
+    "Start Isolating the instance": {
+      "Type": "Task",
+      "Resource": "arn:aws:lambda:us-west-2:<<Account Number>>:function:sec-ir-2-isolateInstance",
+      "Next": "Job Complete?",
+      "InputPath": "$",
+      "ResultPath": "$",
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "IntervalSeconds": 1,
+          "MaxAttempts": 3,
+          "BackoffRate": 2
+        }
+      ]
+    },
+    "Wait X Seconds": {
+      "Type": "Wait",
+      "SecondsPath": "$.wait_time",
+      "Next": "Start Isolating the instance"
+    },
+    "Job Complete?": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.STATUS",
+          "StringEquals": "FAILED",
+          "Next": "Job Failed"
+        },
+        {
+          "Variable": "$.STATUS",
+          "StringEquals": "SUCCEEDED",
+          "Next": "Alert Security Team on Isolation and Incident"
+        },
+        {
+          "Variable": "$.STATUS",
+          "StringEquals": "DONE",
+          "Next": "Already Isolated"
+        }
+      ],
+      "Default": "Wait X Seconds"
+    },
+    "Job Failed": {
+      "Type": "Fail",
+      "Cause": "AWS Batch Job Failed",
+      "Error": "DescribeJob returned FAILED"
+    },
+    "Alert Security Team on Isolation and Incident": {
+      "Type": "Task",
+      "Resource": "arn:aws:lambda:us-west-2:<<Account Number>>:function:sec-ir-3-sendIsolationNotification",
+      "InputPath": "$",
+      "ResultPath": "$",
+      "Next": "Prepare for Remediation",
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "IntervalSeconds": 1,
+          "MaxAttempts": 3,
+          "BackoffRate": 2
+        }
+      ]
+    },
+    "Prepare for Remediation": {
+      "Type": "Task",
+      "Resource": "arn:aws:lambda:us-west-2:<<Account Number>>:function:sec-ir-4-snapShotCreation",
+      "InputPath": "$",
+      "ResultPath": "$.snapshotID",
+      "Next": "Start Forensic Instance",
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "IntervalSeconds": 1,
+          "MaxAttempts": 3,
+          "BackoffRate": 2
+        }
+      ]
+    },
+    "Start Forensic Instance": {
+      "Type": "Task",
+      "Resource": "arn:aws:lambda:us-west-2:<<Account Number>>:function:sec-ir-5-startForensicInstance",
+      "InputPath": "$",
+      "ResultPath": "$",
+      "Next": "Attach Volume For Forensic Analysis",
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "IntervalSeconds": 1,
+          "MaxAttempts": 3,
+          "BackoffRate": 2
+        }
+      ]
+    },
+    "Attach Volume For Forensic Analysis": {
+      "Type": "Task",
+      "Resource": "arn:aws:lambda:us-west-2:<<Account Number>>:function:sec-ir-6-createAndAttachAffectedVolume",
+      "InputPath": "$",
+      "Next": "SSM Activation Job Complete?",
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "IntervalSeconds": 1,
+          "MaxAttempts": 3,
+          "BackoffRate": 2
+        }
+      ]
+    },
+    "Wait for instance boot up": {
+      "Type": "Wait",
+      "SecondsPath": "$.wait_time",
+      "Next": "IsSSMInstalled"
+    },
+    "IsSSMInstalled": {
+      "Type": "Task",
+      "Resource": "arn:aws:lambda:us-west-2:<<Account Number>>:function:sec-ir-7-isSSMInstalled",
+      "InputPath": "$",
+      "Next": "SSM Activation Job Complete?",
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "IntervalSeconds": 1,
+          "MaxAttempts": 3,
+          "BackoffRate": 2
+        }
+      ]
+    },
+    "SSM Activation Job Complete?": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.SSM_STATUS",
+          "StringEquals": "FAILED",
+          "Next": "SSM Activation Job Failed"
+        },
+        {
+          "Variable": "$.SSM_STATUS",
+          "StringEquals": "SUCCEEDED",
+          "Next": "Generate Forensic Report"
+        }
+      ],
+      "Default": "Wait for instance boot up"
+    },
+    "SSM Activation Job Failed": {
+      "Type": "Fail",
+      "Cause": "AWS SSM Activation Job Failed",
+      "Error": "DescribeJob returned FAILED"
+    },
+    "Generate Forensic Report": {
+      "Type": "Task",
+      "Resource": "arn:aws:lambda:us-west-2:<<Account Number>>:function:sec-ir-8-runForensicAnalysis",
+      "InputPath": "$",
+      "Next": "Send Forensic Report",
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "IntervalSeconds": 1,
+          "MaxAttempts": 3,
+          "BackoffRate": 2
+        }
+      ]
+    },
+    "Send Forensic Report": {
+      "Type": "Task",
+      "Resource": "arn:aws:lambda:us-west-2:<<Account Number>>:function:sec-ir-9-sendForensicReport",
+      "InputPath": "$",
+      "ResultPath": "$",
+      "Next": "Kill or Quarantine",
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "IntervalSeconds": 1,
+          "MaxAttempts": 3,
+          "BackoffRate": 2
+        }
+      ]
+    },
+    "Already Isolated": {
+      "Type": "Pass",
+      "InputPath": "$",
+      "ResultPath": "$",
+      "End": true
+    },
+    "Kill or Quarantine": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:us-west-2:<<Account Number>>:activity:Kill-it",
+      "TimeoutSeconds": 3600,
+      "InputPath": "$",
+      "ResultPath": null,
+      "Next": "Got Authorization?"
+    },
+    "Got Authorization?": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.STATUS",
+          "StringEquals": "FAILED",
+          "Next": "Keep in Quarantine"
+        },
+        {
+          "Variable": "$.STATUS",
+          "StringEquals": "SUCCEEDED",
+          "Next": "Terminate affected instance"
+        }
+      ]
+    },
+    "Terminate affected instance": {
+      "Type": "Task",
+      "InputPath": "$",
+      "Resource": "arn:aws:lambda:us-west-2:<<Account Number>>:function:sec-ir-B-terminateInstance",
+      "End": true
+    },
+    "Keep in Quarantine": {
+      "Type": "Pass",
+      "End": true
+    }
+  }
+}

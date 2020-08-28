@@ -50,7 +50,7 @@ def lambda_handler(event, context):
 
 def formatMyMessage(instanceID, targetGroupArn):
     title = "High Severity Alert!! \n Security Incident detected \n"
-    title += " Instance Isolated due to security incident detected by guard duty from ALB/Autoscaling : " + instanceID
+    title += " Instance Isolated from ALB/Autoscaling/Network due to security incident detected by guard duty or CloudWatch Logs : " + instanceID
     next_steps = '\n 1. Snapshot of the volume will be created \n'
     next_steps += ' 2. Snapshot will be mounted into volume for Forensic Analysis \n'
     next_steps += ' 3. New Forensic Instance will be created and the volume will be mounted for forensic analysis \n'

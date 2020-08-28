@@ -17,6 +17,7 @@ import boto3
 import os
 
 ec2client = boto3.client('ec2')
+ec2 = boto3.resource('ec2')
 
 
 # Check if instance exists
@@ -30,12 +31,50 @@ def get_instance_by_id(instanceID):
         )
         for instance in TaggedInstances:
             if instance.id == instanceID:
-                print("Terminating instance %s", instanceID)
-                response = ec2client.terminate_instances(
-                    InstanceIds=[instanceID]
+                print("Terminating instance : ", instanceID)
+                response = ec2client.terminate_instances(InstanceIds=[instanceID])
                 print(response)
+                try:
+                    remove_nacl(instanceID)
+                except:
+                    print("Could not remove Quarantine NACL")
                 return 'SUCCEEDED'
     return 'FAILED'
+
+
+def remove_nacl(instanceID):
+    Instances = ec2client.describe_instances(
+        InstanceIds=[instanceID]
+    )
+    if len(Instances) > 0:
+        VPCID = Instances['Reservations'][0]['Instances'][0]['VpcId']
+        SubnetID = Instances['Reservations'][0]['Instances'][0]['SubnetId']
+        cidr = Instances['Reservations'][0]['Instances'][0]['NetworkInterfaces'][0]['PrivateIpAddresses'][0]['PrivateIpAddress'] + "/32"
+        for nacl in ec2client.describe_network_acls()['NetworkAcls']:
+            if nacl['VpcId'] == VPCID:
+                for association in nacl['Associations']:
+                    if association['SubnetId'] == SubnetID:
+                        if association['SubnetId'] == SubnetID:
+                            rule = find_rule(nacl['Entries'], cidr)
+                            if rule > 0:
+                                naclID = nacl['NetworkAclId']
+                                response = ec2client.delete_network_acl_entry(
+                                    NetworkAclId=naclID,Egress=True,RuleNumber=rule
+                                    )
+                                print(response)
+                                return
+    return
+
+
+def find_rule(entries, cidr):
+    if len(entries) == 0:
+        return 0
+    for entry in entries:
+        if entry['Egress']:
+            if entry['CidrBlock'] == cidr and entry['RuleAction'] == 'deny':
+                return entry['RuleNumber']
+    print("No matching NACLs found")
+    return 0
 
 
 def lambda_handler(event, context):

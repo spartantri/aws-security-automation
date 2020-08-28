@@ -34,6 +34,10 @@ def lambda_handler(event, context):
                         'Key': 'Name',
                         'Value': 'Isolated VOLUME backup'
                     },
+                    {
+                        'Key': 'Source',
+                        'Value': event.get('instanceID')
+                    }
                 ]
             },
         ]
