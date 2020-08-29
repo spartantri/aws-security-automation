@@ -32,6 +32,7 @@ def get_instance_by_id(instanceID):
         for instance in TaggedInstances:
             if instance.id == instanceID:
                 print("Terminating instance : ", instanceID)
+
                 response = ec2client.terminate_instances(InstanceIds=[instanceID])
                 print(response)
                 try:
