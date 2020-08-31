@@ -21,6 +21,8 @@ elbv2client = boto3.client('elbv2')
 autoscalingclient = boto3.client('autoscaling')
 ec2client = boto3.client('ec2')
 ec2 = boto3.resource('ec2')
+# If NACL is required, add it to block Egress or Ingress
+Egress = False
 
 
 # Get Autoscaling instance matching the instanceID
@@ -105,35 +107,45 @@ def isolateInstanceALBv2(instanceID, targetGroupsARN):
 
 
 def isolate_nacl(instanceID):
+    from os import environ
+    upstreamsubnetID = ""
+    upstreamVPCID = ""
+    if 'upstreamsubnetID' in environ:
+        upstreamsubnetID = environ.get('upstreamsubnetID')
+    else:
+        return
+    if 'upstreamVPCID' in environ:
+        upstreamVPCID = environ.get('upstreamVPCID')
     Instances = ec2client.describe_instances(
         InstanceIds=[instanceID]
     )
     if len(Instances) > 0:
         VPCID = Instances['Reservations'][0]['Instances'][0]['VpcId']
+        if upstreamVPCID == "":
+            upstreamVPCID = VPCID
         SubnetID = Instances['Reservations'][0]['Instances'][0]['SubnetId']
         cidr = Instances['Reservations'][0]['Instances'][0]['NetworkInterfaces'][0]['PrivateIpAddresses'][0]['PrivateIpAddress'] + "/32"
         for nacl in ec2client.describe_network_acls()['NetworkAcls']:
-            if nacl['VpcId'] == VPCID:
+            if nacl['VpcId'] == upstreamVPCID:
                 for association in nacl['Associations']:
-                    if association['SubnetId'] == SubnetID:
-                        if association['SubnetId'] == SubnetID:
-                            nextrule = find_nextrule(nacl['Entries'], cidr)
-                            naclID = nacl['NetworkAclId']
-                            if nextrule == 0:
-                                return
-                            elif nextrule == 1:
-                                from os import environ
-                                FORENSIC_SOURCE = environ['FORENSIC_SOURCE']
-                                ec2client.create_network_acl_entry(
-                                    CidrBlock=FORENSIC_SOURCE, NetworkAclId=naclID, Egress=True, Protocol="-1", RuleAction='deny',
-                                    RuleNumber=nextrule
-                                )
-                                nextrule += 1
-                            response = ec2client.create_network_acl_entry(
-                                CidrBlock=cidr, NetworkAclId=naclID,Egress=True,Protocol="-1",RuleAction='deny',RuleNumber=nextrule
-                                )
-                            print(response)
+                    if association['SubnetId'] == upstreamsubnetID:
+                        nextrule = find_nextrule(nacl['Entries'], cidr)
+                        naclID = nacl['NetworkAclId']
+                        if nextrule == 0:
                             return
+                        elif nextrule == 1:
+                            from os import environ
+                            FORENSIC_SOURCE = environ['FORENSIC_SOURCE']
+                            ec2client.create_network_acl_entry(
+                                CidrBlock=FORENSIC_SOURCE, NetworkAclId=naclID, Egress=Egress, Protocol="-1", RuleAction='allow',
+                                RuleNumber=nextrule
+                            )
+                            nextrule += 1
+                        response = ec2client.create_network_acl_entry(
+                            CidrBlock=cidr, NetworkAclId=naclID,Egress=Egress,Protocol="-1",RuleAction='deny',RuleNumber=nextrule
+                            )
+                        print(response)
+                        return
     return
 
 
@@ -142,7 +154,7 @@ def find_nextrule(entries, cidr):
         return 1
     nextrule = 0
     for entry in entries:
-        if entry['Egress']:
+        if entry['Egress'] == Egress:
             print(entry['RuleNumber'], entry['RuleAction'], entry['CidrBlock'])
             if entry['CidrBlock'] == cidr and entry['RuleAction'] == 'deny':
                 return 0

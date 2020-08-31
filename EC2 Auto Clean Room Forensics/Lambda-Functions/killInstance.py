@@ -19,6 +19,9 @@ import os
 ec2client = boto3.client('ec2')
 ec2 = boto3.resource('ec2')
 
+# Remove NACL from Egress or Ingress
+Egress = False
+
 
 # Check if instance exists
 def get_instance_by_id(instanceID):
@@ -32,18 +35,22 @@ def get_instance_by_id(instanceID):
         for instance in TaggedInstances:
             if instance.id == instanceID:
                 print("Terminating instance : ", instanceID)
-
+                remove_nacl(instanceID)
                 response = ec2client.terminate_instances(InstanceIds=[instanceID])
-                print(response)
-                try:
-                    remove_nacl(instanceID)
-                except:
-                    print("Could not remove Quarantine NACL")
                 return 'SUCCEEDED'
     return 'FAILED'
 
 
 def remove_nacl(instanceID):
+    from os import environ
+    upstreamsubnetID = ""
+    upstreamVPCID = ""
+    if 'upstreamsubnetID' in environ:
+        upstreamsubnetID = environ.get('upstreamsubnetID')
+    else:
+        return
+    if 'upstreamVPCID' in environ:
+        upstreamVPCID = environ.get('upstreamVPCID')
     Instances = ec2client.describe_instances(
         InstanceIds=[instanceID]
     )
@@ -52,18 +59,17 @@ def remove_nacl(instanceID):
         SubnetID = Instances['Reservations'][0]['Instances'][0]['SubnetId']
         cidr = Instances['Reservations'][0]['Instances'][0]['NetworkInterfaces'][0]['PrivateIpAddresses'][0]['PrivateIpAddress'] + "/32"
         for nacl in ec2client.describe_network_acls()['NetworkAcls']:
-            if nacl['VpcId'] == VPCID:
+            if nacl['VpcId'] == upstreamVPCID:
                 for association in nacl['Associations']:
-                    if association['SubnetId'] == SubnetID:
-                        if association['SubnetId'] == SubnetID:
-                            rule = find_rule(nacl['Entries'], cidr)
-                            if rule > 0:
-                                naclID = nacl['NetworkAclId']
-                                response = ec2client.delete_network_acl_entry(
-                                    NetworkAclId=naclID,Egress=True,RuleNumber=rule
-                                    )
-                                print(response)
-                                return
+                    if association['SubnetId'] == upstreamsubnetID:
+                        rule = find_rule(nacl['Entries'], cidr)
+                        if rule > 0:
+                            naclID = nacl['NetworkAclId']
+                            response = ec2client.delete_network_acl_entry(
+                                NetworkAclId=naclID,Egress=Egress,RuleNumber=rule
+                                )
+                            print(response)
+                            return
     return
 
 
@@ -71,9 +77,8 @@ def find_rule(entries, cidr):
     if len(entries) == 0:
         return 0
     for entry in entries:
-        if entry['Egress']:
-            if entry['CidrBlock'] == cidr and entry['RuleAction'] == 'deny':
-                return entry['RuleNumber']
+        if entry['Egress'] == Egress and entry['CidrBlock'] == cidr and entry['RuleAction'] == 'deny':
+            return entry['RuleNumber']
     print("No matching NACLs found")
     return 0
 

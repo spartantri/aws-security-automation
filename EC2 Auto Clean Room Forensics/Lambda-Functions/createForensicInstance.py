@@ -21,6 +21,7 @@ ec2client = boto3.client('ec2')
 
 def lambda_handler(event, context):
     # Create Instances
+    instanceID = event.get('instanceID')
     response = ec2client.run_instances(
         ImageId=os.environ['AMI_ID'],
         InstanceType='t2.small',
@@ -29,7 +30,7 @@ def lambda_handler(event, context):
         Monitoring={
             'Enabled': True
         },
-        IamInstanceProfile={
+        IamInstanceProfile = {
             'Arn': os.environ['INSTANCE_PROFILE']
         },
         # Non-Amazon linux instances may not have installed the ssm agent by default
@@ -60,6 +61,9 @@ def lambda_handler(event, context):
                     }, {
                         'Key': 'IsInstanceTested',
                         'Value': 'Yes'
+                    }, {
+                        'Key': 'Case',
+                        'Value': instanceID
                     },
                 ]
             },
