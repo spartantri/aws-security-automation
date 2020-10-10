@@ -1,0 +1,627 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: HIDS CloudWatch Logs ElasticSearch Stack,**WARNING** This template creates 2 EC2 instances, a CloudWatch Logs Group, AWS Lambda function, and an Elasticsearch Domain. You will be billed for the AWS resources used if you create a stack from this template. Licensed under the Apache License, 2.0. aws.amazon.com/blogs/security/how-to-monitor-host-based-intrusion-detection-system-alerts-on-amazon-ec2-instances/
+
+Mappings:
+  ReleaseMap:
+    3.6.0:
+      OSSEChash: "16a0b272c8872f3ef5e5ae673ff73a07b96cc855"
+    3.5.0:
+      OSSEChash: "4d53da1ea65f3d371773a72f798f7b4c7c1cac68"
+    3.4.0:
+      OSSEChash: "671e15ed27a9c11337bb90c929b6646ca8a58552"
+    2.9.0:
+      OSSEChash: "abd5741dc474cbce5cc116f46a5ef2528c847918"
+    ossec-hids-2016-04:
+      OSSEChash: "868e7fa13f0525b85897f8b981fefefdce3e9439"
+
+Parameters:
+  HIDSInstanceSize:
+    Default: "t2.micro"
+    Description: Instance size for OSSEC Test Instances.
+    Type: String
+    AllowedValues:
+      - "t2.micro"
+      - "t2.small"
+      - "t2.medium"
+  HIDSInstanceQuantity:
+    Default: 2
+    Description: Number of OSSEC Test Instances.
+    Type: Number
+  ESInstanceSize:
+    Default: "m5.large.elasticsearch"
+    Description: Instance size for Elasticsearch Instance.
+    Type: String
+    AllowedValues:
+      - "t2.small.elasticsearch"
+      - "t2.medium.elasticsearch"
+      - "m5.large.elasticsearch"
+      - "m5.xlarge.elasticsearch"
+      - "m5.2xlarge.elasticsearch"
+  MyS3Bucket:
+    Description: An S3 Bucket containing the Lambda zipped deployment package. Must be in the region where the stack is launched.
+    Type: String
+  MyS3Key:
+    Description: The path to zipped deployment package within the bucket. Must be in the region where the stack is launched.
+    Type: String
+    Default: "hids-lambda-consumer.zip"
+  MyKeyPair:
+    Default: ''
+    Description: Public/private key pair, which allows you to connect securely toyour instance after it launches.
+    Type: AWS::EC2::KeyPair::KeyName
+  MyTrustedNetwork:
+    Description: Only connections from this network are allowed to your Elasticsearch Domain or EC2 instances. Enter an IP or CIDR E.g. 1.1.1.1/24 or 10.10.10.10/32
+    Type: String
+  VPCId:
+    Description: Please provide a VPC to deploy the solution into.
+    Type: AWS::EC2::VPC::Id
+  SubnetId:
+    Description: Please provide a subnet id with outbound connectivity within the VPC you selected above.
+    Type: AWS::EC2::Subnet::Id
+  AssignPublicIP:
+    Description: Assign a public IP to the EC2 instances? Set to true if you connect out through an Internet Gateway or leave as false if you connect through a NAT Gateway.
+    Default: false
+    Type: String
+    AllowedValues:
+      - true
+      - false
+  AmznLinux:
+    Type: 'AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>'
+    Default: '/aws/service/ami-amazon-linux-latest/amzn2-ami-hvm-x86_64-gp2'
+
+Conditions:
+  AssignPubIp:
+    !Equals [ !Ref AssignPublicIP, true ]
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+    - Label:
+        default: Instance Configuration
+      Parameters:
+      - HIDSInstanceSize
+      - HIDSInstanceQuantity
+      - ESInstanceSize
+      - MyKeyPair
+    - Label:
+        default: S3 Configuration
+      Parameters:
+      - MyS3Bucket
+      - MyS3Key
+    - Label:
+        default: Network Configuration
+      Parameters:
+      - VPCId
+      - SubnetId
+      - AssignPublicIP
+      - MyTrustedNetwork
+    ParameterLabels:
+      HIDSInstanceSize:
+        default: EC2 instance size for test server
+      HIDSInstanceQuantity:
+        default: EC2 instance count test servers
+      ESInstanceSize:
+        default: Elasticsearch instance size
+      MyS3Bucket:
+        default: In region S3 bucket with zipped Lambda deployment package
+      MyS3Key:
+        default: In region S3 key for zipped Lambda deployment package
+      MyKeyPair:
+        default: SSH Key Pair
+      MyTrustedNetwork:
+        default: Trusted Network CIDR
+      VPCId:
+        default: Target VPC for solution
+      Subnet:
+        default: Subnet to launch instance into
+      AssignPublicIP:
+        default: Assign Public IP for EC2
+
+Resources:
+  HIDSSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Incoming Traffic Group
+      SecurityGroupIngress:
+      - CidrIp:
+          Ref: MyTrustedNetwork
+        FromPort: '22'
+        IpProtocol: tcp
+        ToPort: '22'
+      - CidrIp:
+          Ref: MyTrustedNetwork
+        FromPort: '80'
+        IpProtocol: tcp
+        ToPort: '80'
+      - CidrIp:
+          Ref: MyTrustedNetwork
+        FromPort: '443'
+        IpProtocol: tcp
+        ToPort: '443'
+      - CidrIp:
+          Ref: MyTrustedNetwork
+        FromPort: '3389'
+        IpProtocol: tcp
+        ToPort: '3389'
+      - CidrIp:
+          Ref: MyTrustedNetwork
+        FromPort: '9200'
+        IpProtocol: tcp
+        ToPort: '9200'
+      VpcId:
+        Ref: VPCId
+      Tags:
+      - Key: Name
+        Value: hids-security-group
+
+  HIDSInstanceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+        - Action:
+          - sts:AssumeRole
+          Effect: Allow
+          Principal:
+            Service:
+            - ec2.amazonaws.com
+        Version: '2012-10-17'
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
+      Path: /
+
+  HIDSInstancePolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: "hids_ec2_cwl_policy"
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          -
+            Effect: "Allow"
+            Action:
+              - "logs:CreateLogGroup"
+              - "logs:CreateLogStream"
+              - "logs:PutLogEvents"
+              - "logs:DescribeLogStreams"
+            Resource: "arn:aws:logs:*:*:*"
+          -
+            Effect: "Allow"
+            Action:
+              - "ec2:DescribeInstances"
+              - "ec2:DescribeTags"
+            Resource: "arn:aws:ec2:*:*:*"
+            Condition:
+              StringEquals:
+                "ec2:ResourceTag/aws:autoscaling:groupName": !Ref HIDSASGroup
+      Roles:
+        -
+          Ref: "HIDSInstanceRole"
+
+  HIDSInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Path: /
+      Roles:
+      - Ref: HIDSInstanceRole
+
+  HIDSLaunchConfiguration:
+    Type: AWS::AutoScaling::LaunchConfiguration
+    Properties:
+      ImageId: !Ref AmznLinux
+      SecurityGroups:
+      - Ref: HIDSSecurityGroup
+      InstanceType:
+        Ref: HIDSInstanceSize
+      BlockDeviceMappings:
+      - DeviceName: "/dev/xvda"
+        Ebs:
+          VolumeSize: '20'
+      IamInstanceProfile:
+        Ref: HIDSInstanceProfile
+      KeyName:
+        Ref: MyKeyPair
+      AssociatePublicIpAddress:
+        !If [AssignPubIp, true, false]
+      UserData:
+        Fn::Base64: !Sub 
+          - |
+            #!/bin/bash -xe
+            yum update -y
+            yum install -y gcc awslogs httpd telnet
+            yum install -y zlib-devel pcre2-devel make gcc zlib-devel pcre2-devel sqlite-devel openssl-devel libevent-devel
+            yum install -y nmap
+            hostname `curl -s 169.254.169.254/latest/meta-data/instance-id`
+            /usr/bin/aws configure set region ${AWS::Region}
+            cat > /tmp/preloaded-vars.conf << EOFpreloaded
+            USER_LANGUAGE="en";
+            USER_NO_STOP="y";
+            USER_INSTALL_TYPE="local";
+            USER_DIR="/var/ossec";
+            USER_ENABLE_SYSCHECK="y";
+            USER_ENABLE_ROOTCHECK="y";
+            USER_UPDATE_RULES="y";
+            USER_ENABLE_EMAIL="n";
+            USER_ENABLE_FIREWALL_RESPONSE="n";
+            USER_ENABLE_ACTIVE_RESPONSE="n";
+            EOFpreloaded
+            cat > /etc/awslogs/awslogs.conf << EOFawslogs
+            [general]
+            state_file = /var/lib/awslogs/agent-stat
+            [/var/ossec/logs/alerts/alerts.json]
+            file = /var/ossec/logs/alerts/alerts.json
+            buffer_duration = 5000
+            log_stream_name = {instance_id}
+            initial_position = start_of_file
+            EOFawslogs
+            sed -ri "s,\{instance_id},`curl -s 169.254.169.254/latest/meta-data/instance-id`," /etc/awslogs/awslogs.conf
+            sed -i "/alerts.json]/a log_group_name=${log_group}" /etc/awslogs/awslogs.conf
+            cd /tmp
+            curl -s https://raw.githubusercontent.com/danielmiessler/SecLists/master/Passwords/darkweb2017-top100.txt -o /tmp/top100.txt
+            sed -ri -e "s,#(PasswordAuthentication yes),\1," -e "s,(PasswordAuthentication no),#\1," /etc/ssh/sshd_config
+            cat > /tmp/storealerts.sh << EOFstorealerts
+            echo "{\"rule\":{\"level\":\$1,\"comment\":\"\$2\",\"sidid\":\$3,\"groups\":[\"access\"]},\"id\":\"\$(date +%s%N|awk '{printf "%.5f",\$0/1000000}')\",\
+            \"TimeStamp\":\$(date +%s%N|awk '{printf "%d",\$0/1000000}'),\"location\":\"\$0\",\"hostname\":\"\$(hostname)\",\"timestamp\":\"\$(date +"%Y %b %d %H:%M:%S")\",\
+            \"logfile\":\"\$4\",\"detail.resource.instanceDetails.instanceId\":\"`curl -s 169.254.169.254/latest/meta-data/instance-id`\"}" >> \$4
+            EOFstorealerts
+            chmod 500 /tmp/storealerts.sh
+            cat > /tmp/genalerts.sh << EOFgenalerts
+            #/bin/bash
+            sleep $[ ( $RANDOM % 20 )  + 1 ]s && /tmp/storealerts.sh 5 "genalert:Local curl1" 178100 /var/ossec/logs/alerts/alerts.json && curl localhost/readme.txt?
+            sleep $[ ( $RANDOM % 10 )  + 1 ]s && /tmp/storealerts.sh 6 "genalert:Sudo existent" 178101 /var/ossec/logs/alerts/alerts.json && sudo -u apache whoami
+            sleep $[ ( $RANDOM % 50 )  + 1 ]s && /tmp/storealerts.sh 6 "genalert:Shadow attempt" 178102 /var/ossec/logs/alerts/alerts.json && sudo -u ec2-user cat /etc/shadow
+            sleep $[ ( $RANDOM % 10 )  + 1 ]s && /tmp/storealerts.sh 8 "genalert:Yum install" 178103 /var/ossec/logs/alerts/alerts.json && sudo yum install -y htop
+            sleep $[ ( $RANDOM % 80 )  + 1 ]s && /tmp/storealerts.sh 8 "genalert:SSH local" 178104 /var/ossec/logs/alerts/alerts.json && ssh admin@localhost echo '`whoami`'
+            sleep $[ ( $RANDOM % 10 )  + 1 ]s && /tmp/storealerts.sh 5 "genalert:Local curl2" 178105 /var/ossec/logs/alerts/alerts.json && curl localhost/~
+            sleep $[ ( $RANDOM % 10 )  + 1 ]s && /tmp/storealerts.sh 6 "genalert:Telnet local22" 178106 /var/ossec/logs/alerts/alerts.json && telnet localhost 22 < /tmp
+            sleep $[ ( $RANDOM % 30 )  + 1 ]s && /tmp/storealerts.sh 5 "genalert:Local curl3" 178107 /var/ossec/logs/alerts/alerts.json && curl localhost/readme.txt?
+            sleep $[ ( $RANDOM % 18 )  + 1 ]s && /tmp/storealerts.sh 5 "genalert:Sudo inexistent" 178108 /var/ossec/logs/alerts/alerts.json && sudo -u bob whoami
+            sleep $[ ( $RANDOM % 20 )  + 1 ]s && /tmp/storealerts.sh 8 "genalert:Yum remove" 178109 /var/ossec/logs/alerts/alerts.json && sudo yum remove -y htop*
+            sleep $[ ( $RANDOM % 25 )  + 1 ]s && /tmp/storealerts.sh 5 "genalert:Local curl4" 178110 /var/ossec/logs/alerts/alerts.json && curl localhost
+            sleep $[ ( $RANDOM % 45 )  + 1 ]s && /tmp/storealerts.sh 8 "genalert:SSH local" 178111 /var/ossec/logs/alerts/alerts.json && ssh bob@localhost echo '`whoami`'
+            sleep $[ ( $RANDOM % 30 )  + 1 ]s && /tmp/storealerts.sh 5 "genalert:Passwd attempt" 178112 /var/ossec/logs/alerts/alerts.json && sudo cat /etc/passwd
+            sleep $[ ( $RANDOM % 60 )  + 1 ]s && /tmp/storealerts.sh 7 "genalert:Bruteforce local" 178113 /var/ossec/logs/alerts/alerts.json && for p in \`cat /tmp/top100.txt\`; do expect -c "set timeout 1; set user ec2-user; spawn ssh -o StrictHostKeyChecking=no ec2-user@\$(hostname) 'id'; expect 'assword:'; send '$p\r'; expect 'assword:'; send 'exit\r'; interact"; done
+            sleep $[ ( $RANDOM % 60 )  + 1 ]s && /tmp/storealerts.sh 7 "genalert:Fake BOF" 178114 /var/ossec/logs/alerts/alerts.json && url=$(python -c "print("/"+"A"*7900)") && curl -s localhost$url
+            sleep $[ ( $RANDOM % 15 )  + 1 ]s && /tmp/storealerts.sh 12 "genalert:C&C" 178115 /var/ossec/logs/alerts/alerts.json && nslookup guarddutyc2activityb.com
+            sleep $[ ( $RANDOM % 15 )  + 1 ]s && /tmp/storealerts.sh 15 "genalert:Exfiltration" 178116 /var/ossec/logs/alerts/alerts.json && dd if=/dev/xvda status=progress |nc 10.78.0.18 80
+            EOFgenalerts
+            chmod 640 /tmp/preloaded-vars.conf /etc/awslogs/awslogs.conf
+            chmod 550 /tmp/genalerts.sh
+            chown root:root /tmp/preloaded-vars.conf /etc/awslogs/awslogs.conf /tmp/genalerts.sh
+            cd /tmp
+            ossec_version="3.6.0"
+            ossec_checksum="16a0b272c8872f3ef5e5ae673ff73a07b96cc855"
+            ossec_source="https://github.com/ossec/ossec-hids/archive/$ossec_version.tar.gz"
+            (wget $ossec_source && mv $ossec_version.tar.gz ossec-hids-$ossec_version.tar.gz)
+            (checksum=$(sha1sum ossec-hids-$ossec_version.tar.gz | cut -d\  -f1); if [ $checksum == $ossec_checksum ]; then tar xfz ossec-hids-$ossec_version.tar.gz && cd ossec-hids-$ossec_version ; else "Wrong checksum. Download again or check if file has been tampered with."; fi)
+            (cp /tmp/preloaded-vars.conf /tmp/ossec-hids-$ossec_version/etc/ && cd /tmp/ossec-hids-$ossec_version && ./install.sh)
+            sed -i '/<global>/a \    <jsonout_output>yes</jsonout_output>' /var/ossec/etc/ossec.conf; sed -i "/region/c region=${AWS::Region}" /etc/awslogs/awscli.conf
+            sed -i '/Files to monitor/a \  <localfile><log_format>apache<\/log_format><location>\/var\/log\/httpd\/access_log<\/location><\/localfile>' /var/ossec/etc/ossec.conf
+            #sed -i '/<!-- EOF -->/d' /var/ossec/rules/local_rules.xml
+            cat >> /var/ossec/rules/local_rules.xml <<EOFossecrules
+            <group name="syslog,sshd,">
+              <rule id="1003" level="5" overwrite="yes" maxsize="2000">
+                <description>Non standard syslog message (size too large).</description>
+              </rule>
+              <rule id="105700" level="0" noalert="1">
+                  <decoded_as>sshd</decoded_as>
+                  <description>SSHD messages grouped.</description>
+              </rule>
+              <rule id="105715" level="3">
+                  <if_sid>105700</if_sid>
+                  <match>^Accepted|authenticated.$</match>
+                  <description>sshd: authentication success.</description>
+                  <group>authentication_success,</group>
+              </rule>
+              <rule id="105716" level="5">
+                  <if_sid>105700</if_sid>
+                  <match>^Failed|^error: PAM: Authentication</match>
+                  <description>sshd: authentication failed.</description>
+                  <group>authentication_failures,</group>
+              </rule>
+              <rule id="105710" level="6">
+                  <if_sid>105700</if_sid>
+                  <match>maximum authentication attempts exceeded|Too many authentication failures</match>
+                  <description>Too many failed logins</description>
+                  <group>authentication_failures,</group>
+              </rule>
+              <rule id="105711" level="5">
+                  <if_sid>105700</if_sid>
+                  <match>Failed password for</match>
+                  <description>Failed attempt to login using an existent user</description>
+                  <group>authentication_failed,</group>
+              </rule>
+              <rule id="105712" level="8" frequency="6" timeframe="20" ignore="60">
+                  <if_matched_sid>105710</if_matched_sid>
+                  <description>SSHD brute force trying to get access to </description>
+                  <description>the system. Possible password spraying</description>
+                  <same_source_ip />
+                  <group>authentication_failures,</group>
+              </rule>
+              <rule id="105713" level="9" frequency="6" timeframe="20" ignore="60">
+                  <if_matched_sid>105710</if_matched_sid>
+                  <description>SSHD brute force trying to get access to </description>
+                  <description>the system. Targeted user attack.</description>
+                  <same_user />
+                  <group>authentication_failures,</group>
+              </rule>
+              <rule id="117101" level="6">
+                  <if_group>authentication_success</if_group>
+                  <time>7 pm - 6:30 am</time>
+                  <description>Successful login during non-business hours.</description>
+                  <group>behavior_anomaly,authentication_success,</group>
+              </rule>
+              <rule id="117102" level="3">
+                  <if_group>authentication_success</if_group>
+                  <time>6:30 am - 7:00 pm</time>
+                  <description>Successful login during business hours.</description>
+                  <group>behavior_anomaly,authentication_success,</group>
+              </rule>
+              <rule id="108101" level="9">
+                  <if_group>authentication_success</if_group>
+                  <srcgeoip>!CA</srcgeoip>
+                  <description>Successful login from outside of Canada.</description>
+                  <group>behavior_anomaly,authentication_success,</group>
+              </rule>
+              <rule id="109101" level="12" timeframe="240">
+                  <if_group>authentication_success</if_group>
+                  <if_matched_group>authentication_failures</if_matched_group>
+                  <same_source_ip />
+                  <description>Multiple authentication failures followed </description>
+                  <description>by a success from same origin.</description>
+                  <group>behavior_anomaly,authentication_success,</group>
+              </rule>
+              <rule id="109102" level="13">
+                  <if_group>authentication_success</if_group>
+                  <if_matched_group>authentication_failures</if_matched_group>
+                  <same_user />
+                  <description>Multiple authentication failures followed </description>
+                  <description>by a success, possible successful brute force.</description>
+                  <group>behavior_anomaly,authentication_success,</group>
+              </rule>
+            </group>
+            <!-- EOF -->
+            EOFossecrules
+            #Requires adding geoip support and geoip db
+            #sed -i "/alerts>/a \     <use_geoip>yes</use_geoip>" /var/ossec/etc/ossec.conf
+            /var/ossec/bin/ossec-control start
+            chkconfig awslogsd on; chkconfig httpd on
+            systemctl start awslogsd; systemctl start httpd
+            echo '*/7 * * * * root sh /tmp/genalerts.sh' >> /etc/crontab; crontab /etc/crontab
+            systemctl restart sshd
+          - log_group: !Ref HIDSAlerts
+
+  HIDSASGroup:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    Properties:
+      LaunchConfigurationName:
+        Ref: HIDSLaunchConfiguration
+      DesiredCapacity:
+        Ref: HIDSInstanceQuantity
+      MinSize:
+        Ref: HIDSInstanceQuantity
+      MaxSize:
+        Ref: HIDSInstanceQuantity
+      VPCZoneIdentifier:
+        - !Ref SubnetId
+      Tags:
+      - Key: Name
+        Value: hids-linux-test-hostAS
+        PropagateAtLaunch: "true"
+
+
+  HIDSAlerts:
+    Type: "AWS::Logs::LogGroup"
+    Properties:
+      LogGroupName: !Join [ "", ["hids-alerts-", !Ref "AWS::Region"]]
+      RetentionInDays: 7
+#  HIDSESAccessRole:
+#    Type: 'AWS::IAM::ServiceLinkedRole'
+#    Properties:
+#      AWSServiceName: es.amazonaws.com
+#      Description: 'Role for ES to access resources in VPC'
+  HIDSESDomain:
+        Type: "AWS::Elasticsearch::Domain"
+#        DependsOn: HIDSESAccessRole
+        Properties:
+          DomainName: !Join [ "", ["hids-alerts-", !Ref "AWS::Region"]]
+          ElasticsearchClusterConfig:
+            DedicatedMasterEnabled: "false"
+            InstanceCount: "1"
+            ZoneAwarenessEnabled: "false"
+            InstanceType:
+              Ref: "ESInstanceSize"
+          ElasticsearchVersion: 7.7
+          EBSOptions:
+            EBSEnabled: true
+            Iops: 0
+            VolumeSize: 10
+            VolumeType: "gp2"
+          SnapshotOptions:
+            AutomatedSnapshotStartHour: "0"
+          AccessPolicies:
+            Version: "2012-10-17"
+            Statement:
+              -
+                Principal:
+                  AWS: "*"
+                Action: "es:ESHttp*"
+                Effect: "Allow"
+                Resource: "arn:aws:es:*"
+#              -
+#                Principal:
+#                  AWS: "*"
+#                Action: "es:ESHttp*"
+#                Effect: "Allow"
+#                Condition:
+#                  IpAddress:
+#                    aws:SourceIp:
+#                      - Ref: MyTrustedNetwork
+#                Resource: "arn:aws:es:*"
+          AdvancedOptions:
+            rest.action.multi.allow_explicit_index: "true"
+          VPCOptions:
+            SecurityGroupIds:
+              - Ref: HIDSSecurityGroup
+            SubnetIds:
+              - Ref: SubnetId
+          Tags:
+          - Key: Name
+            Value: hids-es-domain
+  HIDSQueue:
+        Type: AWS::SQS::Queue
+        Properties:
+            QueueName: "HIDS-Queue-S3"
+  HIDSLambdaConsumer:
+        Type: AWS::Lambda::Function
+        Properties:
+            Description: "HIDS Alerts CloudWatch Logs to Amazon ES streaming"
+            Handler : "index.handler"
+            MemorySize: 128
+            Timeout: 300
+            Role:
+              Fn::GetAtt:
+                - "HIDSLambdaRole"
+                - "Arn"
+            Runtime : "nodejs12.x"
+            Environment:
+              Variables:
+                ES_ENDPOINT: !GetAtt HIDSESDomain.DomainEndpoint
+                HIDSQueueName: !Ref HIDSQueue
+            Code:
+              S3Bucket: !Ref MyS3Bucket
+              S3Key: !Ref MyS3Key
+            VpcConfig:
+              SecurityGroupIds:
+                - Ref: HIDSSecurityGroup
+              SubnetIds:
+                - Ref: SubnetId
+  HIDSLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          -
+            Effect: "Allow"
+            Principal:
+              Service:
+                - "lambda.amazonaws.com"
+            Action:
+              "sts:AssumeRole"
+      Path: "/"
+  HIDSLambdaPolicy:
+      Type: AWS::IAM::Policy
+      Properties:
+        PolicyName: "hids_lambda_consumer_policy"
+        PolicyDocument:
+          Version: 2012-10-17
+          Statement:
+            -
+              Effect: "Allow"
+              Action:
+                - "logs:CreateLogGroup"
+                - "logs:CreateLogStream"
+                - "logs:PutLogEvents"
+                - "logs:GetLogEvents"
+                - "logs:DescribeLogStreams"
+              Resource: "arn:aws:logs:*:*:*"
+            -
+              Effect: "Allow"
+              Action:
+                - "es:ESHttpPost"
+              Resource: "arn:aws:es:*:*:*"
+            -
+              Effect: "Allow"
+              Action:
+                - "ec2:CreateNetworkInterface"
+                - "ec2:DeleteNetworkInterface"
+                - "ec2:DescribeNetworkInterfaces"
+              Resource: "*"
+            -
+              Effect: "Allow"
+              Action:
+                - "sqs:ReceiveMessage"
+                - "sqs:SendMessage"
+                - "sqs:DeleteMessage"
+                - "sqs:GetQueueAttributes"
+              Resource: "*"
+            -
+              Effect: "Allow"
+              Action:
+                - "securityhub:GetFindings"
+                - "securityhub:GetInsights"
+                - "securityhub:GetInsightResults"
+                - "securityhub:UpdateFindings"
+                - "securityhub:CreateInsight"
+                - "securityhub:DeleteInsight"
+                - "securityhub:UpdateInsight"
+              Resource: "*"
+        Roles:
+          -
+            Ref: "HIDSLambdaRole"
+  HIDSLambdaInvoke:
+    Type: "AWS::Lambda::Permission"
+    Properties:
+      FunctionName:
+        Fn::GetAtt:
+          - "HIDSLambdaConsumer"
+          - "Arn"
+      Action: "lambda:InvokeFunction"
+      Principal: !Join [ "", ["logs.", !Ref "AWS::Region", ".amazonaws.com"]]
+      SourceAccount:
+        Ref: "AWS::AccountId"
+      SourceArn:
+        Fn::GetAtt:
+          - HIDSAlerts
+          - Arn
+  HIDSFilter:
+    DependsOn: HIDSLambdaInvoke
+    Type: AWS::Logs::SubscriptionFilter
+    Properties:
+      LogGroupName:
+        !Join [ "", ["hids-alerts-", !Ref "AWS::Region"]]
+      FilterPattern: ""
+      DestinationArn:
+        !GetAtt
+          HIDSLambdaConsumer.Arn
+Outputs:
+  HIDSESKibanaURL:
+    Description: Elastic Search Kibana Endpoint.
+    Value:
+      !Join [ "", ["https://", !GetAtt "HIDSESDomain.DomainEndpoint", "/_plugin/kibana/"]]
+  HIDSASGroup:
+    Description: HIDS autoscaling group.
+    Value:
+      Ref: HIDSASGroup
+  HIDSLaunchConfiguration:
+    Description: HIDS instances launch configuration.
+    Value:
+      Ref: HIDSLaunchConfiguration
+  HIDSLambdaConsumer:
+    Description: HIDS Lambda Consumer Function.
+    Value:
+      Ref: HIDSLambdaConsumer
+  HIDSSecurityGroup:
+    Description: The HIDS Security Group ID.
+    Value:
+      Ref: HIDSSecurityGroup
+  Region:
+    Description: Region of the stack.
+    Value:
+      Ref: AWS::Region
+  HIDSQueueURL:
+    Description: "URL of new Amazon SQS Queue"
+    Value: 
+      Ref: HIDSQueue
+  HIDSQueueARN: 
+    Description: "ARN of new AmazonSQS Queue"
+    Value: 
+      Fn::GetAtt: 
+        - HIDSQueue
+        - Arn
+  HIDSQueueName: 
+    Description: "Name of new Amazon SQS Queue"
+    Value: 
+      Fn::GetAtt: 
+        - HIDSQueue
+        - QueueName

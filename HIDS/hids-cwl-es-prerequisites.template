@@ -1,0 +1,8 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'HIDS CloudWatch Logs ElasticSearch Stack with VPC access requires a service-linked-role, this can be created alternatively from the CLI with "aws iam create-service-linked-role --aws-service-name es.amazonaws.com"'
+Resources:
+  HIDSESAccessRole:
+    Type: 'AWS::IAM::ServiceLinkedRole'
+    Properties:
+      AWSServiceName: es.amazonaws.com
+      Description: 'Role for ES to access resources in VPC'
