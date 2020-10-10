@@ -1,0 +1,62 @@
+{
+  "Comment": " Function to automatically isolate and terminate an instance in case of security incident. ",
+  "StartAt": "Create Support Ticket Job",
+  "States": {
+    "Create Support Ticket Job": {
+      "Type": "Task",
+      "Resource": "arn:aws:lambda:us-west-2:<<Account Number>>:function:sec-ir-1-createSupportTicket",
+      "ResultPath": "$.supportID",
+      "Next": "Start Isolating the instance",
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "IntervalSeconds": 1,
+          "MaxAttempts": 3,
+          "BackoffRate": 2
+        }
+      ]
+    },
+    "Start Isolating the instance": {
+      "Type": "Task",
+      "Resource": "arn:aws:lambda:us-west-2:<<Account Number>>:function:sec-ir-2-isolateInstance",
+      "Next": "Terminate affected instance",
+      "InputPath": "$",
+      "ResultPath": "$",
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "IntervalSeconds": 1,
+          "MaxAttempts": 3,
+          "BackoffRate": 2
+        }
+      ]
+    },
+    "Terminate affected instance": {
+      "Type": "Task",
+      "InputPath": "$",
+      "Resource": "arn:aws:lambda:us-west-2:<<Account Number>>:function:sec-ir-B-terminateInstance",
+      "Next": "Alert Security Team on Isolation and Incident"
+    },
+    "Alert Security Team on Isolation and Incident": {
+      "Type": "Task",
+      "Resource": "arn:aws:lambda:us-west-2:<<Account Number>>:function:sec-ir-3-sendIsolationNotification",
+      "InputPath": "$",
+      "ResultPath": "$",
+      "End": true,
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "IntervalSeconds": 1,
+          "MaxAttempts": 3,
+          "BackoffRate": 2
+        }
+      ]
+    }
+  }
+}
